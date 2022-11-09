@@ -9,6 +9,7 @@
 #include <iostream>
 #include <string>
 #include <fstream>
+#include <array>
 
 #include <GL/glew.h>
 
