@@ -166,6 +166,7 @@ namespace _2d {
         }
     };
 
+#if 0
     struct Cross : public components::IDrawable<>, IFixedMovable, IFixedRotatable {
         const GLuint SCALE_UNIFORM = 0;
         const GLuint TRANSLATION_UNIFORM = 1;
@@ -305,6 +306,7 @@ namespace _2d {
     private:
         glm::vec3 cross_color = { 0.0, 1.0, 1.0 };
     };
+#endif
 
     struct Grid {
         GLfloat tail_size;
@@ -385,24 +387,36 @@ namespace _2d {
         }
     }
 
-    struct Maze : public components::IDrawable<3> {
-        static const struct {
-            static const GLuint MODEL = 0;
-            static const GLuint COLOR = 1;
-            static const GLuint ROTATION = 2;
-        } BUFFER_ID;
+    struct MazeDrawCtx {
+        Segment model;
+        const std::vector<GLfloat>& rotations;
+        std::array<glm::vec3, 2>& colors;
+        const Grid& grid;
 
-        static const struct {
-            static const GLuint MODEL = 0;
-            static const GLuint COLOR = 1;
-            static const GLuint ROTATION = 2;
-        } SHADER_ATTRIBUTE_ID;
+        MazeDrawCtx(const std::vector<GLfloat>& rotations, std::array<glm::vec3, 2>& colors, const Grid& grid) :
+            grid(grid),
+            rotations(rotations),
+            colors(colors)
+        {
+            this->model = grid.get_sample_segment();
+        }
+    };
+
+    struct Maze : public components::IDrawable<3> {
+        static const GLuint BUFFER_ID_MODEL = 0;
+        static const GLuint BUFFER_ID_COLOR = 1;
+        static const GLuint BUFFER_ID_ROTATION = 2;
+
+        static const GLuint SHADER_ATTRIBUTE_ID_MODEL = 0;
+        static const GLuint SHADER_ATTRIBUTE_ID_COLOR = 1;
+        static const GLuint SHADER_ATTRIBUTE_ID_ROTATION = 2;
 
         const Grid grid;
         std::vector<Segment> segments;
         std::vector<GLfloat> rotations;
         std::array<glm::vec3, 2> colors;
         components::StateManager<3> gl_manager;
+        MazeDrawCtx draw_ctx;
 
         bool check_collisions(const Segment& player) const {
             for (const auto& segment : this->segments) {
@@ -454,30 +468,15 @@ namespace _2d {
             this->start();
         }
 
-        struct DrawCtx {
-            Segment model;
-            const std::vector<GLfloat>& rotations;
-            std::array<glm::vec3, 2>& colors;
-            const Grid& grid;
-
-            DrawCtx(const std::vector<GLfloat>& rotations, std::array<glm::vec3, 2>& colors, const Grid& grid) :
-                grid(grid),
-                rotations(rotations),
-                colors(colors)
-            {
-                this->model = grid.get_sample_segment();
-            }
-        } draw_ctx;
-
         virtual void register_shaders() override {
             this->gl_manager.compile_shaders_from_file("shaders/maze_v.glsl", "shaders/maze_f.glsl");
         }
 
         virtual void register_buffers() override {
             DEBUGLN("Loading Maze model data:");
-            DEBUGFMTLN("-- vbo: %d", this->gl_manager.vbos[Maze::BUFFER_ID.MODEL]);
+            DEBUGFMTLN("-- vbo: %d", this->gl_manager.vbos[Maze::BUFFER_ID_MODEL]);
 
-            this->gl_manager.bind_buffer<Maze::BUFFER_ID.MODEL>();
+            this->gl_manager.bind_buffer<Maze::BUFFER_ID_MODEL>();
             DEBUGFMTLN("-- (%f, %f), (%f, %f)", this->draw_ctx.model.p1.x, this->draw_ctx.model.p1.y, this->draw_ctx.model.p2.x, this->draw_ctx.model.p2.y);
             glBufferData(
                 GL_ARRAY_BUFFER,
@@ -487,10 +486,10 @@ namespace _2d {
             ); ASSERTGL();
 
             DEBUGLN("Configuring attribute pointer for Maze Model:");
-            DEBUGFMTLN("-- layout: %d", Maze::SHADER_ATTRIBUTE_ID.MODEL);
-            glEnableVertexAttribArray(Maze::SHADER_ATTRIBUTE_ID.MODEL); ASSERTGL();
+            DEBUGFMTLN("-- layout: %d", Maze::SHADER_ATTRIBUTE_ID_MODEL);
+            glEnableVertexAttribArray(Maze::SHADER_ATTRIBUTE_ID_MODEL); ASSERTGL();
             glVertexAttribPointer(
-                Maze::SHADER_ATTRIBUTE_ID.MODEL,
+                Maze::SHADER_ATTRIBUTE_ID_MODEL,
                 2,
                 GL_FLOAT,
                 GL_FALSE,
@@ -499,9 +498,9 @@ namespace _2d {
             ); ASSERTGL();
 
             DEBUGLN("Loading Maze color data:");
-            DEBUGFMTLN("-- vbo: %d", this->gl_manager.vbos[Maze::BUFFER_ID.COLOR]);
-            glEnableVertexAttribArray(Maze::SHADER_ATTRIBUTE_ID.COLOR); ASSERTGL();
-            this->gl_manager.bind_buffer<Maze::BUFFER_ID.COLOR>();
+            DEBUGFMTLN("-- vbo: %d", this->gl_manager.vbos[Maze::BUFFER_ID_COLOR]);
+            glEnableVertexAttribArray(Maze::SHADER_ATTRIBUTE_ID_COLOR); ASSERTGL();
+            this->gl_manager.bind_buffer<Maze::BUFFER_ID_COLOR>();
             
             glBufferData(
                 GL_ARRAY_BUFFER,
@@ -511,10 +510,10 @@ namespace _2d {
             ); ASSERTGL();
 
             DEBUGLN("Configuring attribute pointer for Maze color:");
-            DEBUGFMTLN("-- layout: %d", Maze::SHADER_ATTRIBUTE_ID.COLOR);
-            glEnableVertexAttribArray(Maze::SHADER_ATTRIBUTE_ID.COLOR); ASSERTGL();
+            DEBUGFMTLN("-- layout: %d", Maze::SHADER_ATTRIBUTE_ID_COLOR);
+            glEnableVertexAttribArray(Maze::SHADER_ATTRIBUTE_ID_COLOR); ASSERTGL();
             glVertexAttribPointer(
-                Maze::SHADER_ATTRIBUTE_ID.COLOR,
+                Maze::SHADER_ATTRIBUTE_ID_COLOR,
                 3,
                 GL_FLOAT,
                 GL_FALSE,
@@ -523,10 +522,10 @@ namespace _2d {
             ); ASSERTGL();
 
             DEBUGLN("Loading Maze rotation data:");
-            DEBUGFMTLN("-- vbo: %d", this->gl_manager.vbos[Maze::BUFFER_ID.ROTATION]);
+            DEBUGFMTLN("-- vbo: %d", this->gl_manager.vbos[Maze::BUFFER_ID_ROTATION]);
 
-            glEnableVertexAttribArray(Maze::SHADER_ATTRIBUTE_ID.ROTATION); ASSERTGL();
-            this->gl_manager.bind_buffer<Maze::BUFFER_ID.ROTATION>();
+            glEnableVertexAttribArray(Maze::SHADER_ATTRIBUTE_ID_ROTATION); ASSERTGL();
+            this->gl_manager.bind_buffer<Maze::BUFFER_ID_ROTATION>();
             glBufferData(
                 GL_ARRAY_BUFFER,
                 this->draw_ctx.rotations.size() * sizeof(this->draw_ctx.rotations.data()[0]),
@@ -535,17 +534,17 @@ namespace _2d {
             ); ASSERTGL();
 
             DEBUGLN("Configuring attribute pointer for Maze rotation:");
-            DEBUGFMTLN("-- layout: %d", Maze::SHADER_ATTRIBUTE_ID.ROTATION);
-            glEnableVertexAttribArray(Maze::SHADER_ATTRIBUTE_ID.ROTATION); ASSERTGL();
+            DEBUGFMTLN("-- layout: %d", Maze::SHADER_ATTRIBUTE_ID_ROTATION);
+            glEnableVertexAttribArray(Maze::SHADER_ATTRIBUTE_ID_ROTATION); ASSERTGL();
             glVertexAttribPointer(
-                Maze::SHADER_ATTRIBUTE_ID.ROTATION,
+                Maze::SHADER_ATTRIBUTE_ID_ROTATION,
                 1,
                 GL_FLOAT,
                 GL_FALSE,
                 1 * sizeof(GLfloat),
                 (void*)0
             ); ASSERTGL();
-            glVertexAttribDivisor(Maze::SHADER_ATTRIBUTE_ID.ROTATION, 1);  ASSERTGL();
+            glVertexAttribDivisor(Maze::SHADER_ATTRIBUTE_ID_ROTATION, 1);  ASSERTGL();
         }
 
         void draw() override {
