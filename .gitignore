@@ -5,3 +5,6 @@ pracownia02/
 dependencies/
 **/bin/
 **/.vs
+**/.idea
+**/.vscode
+target/

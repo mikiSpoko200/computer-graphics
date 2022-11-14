@@ -577,13 +577,11 @@ void MyWin::MainLoop() {
     horizontal.p1 = glm::vec2( 1.0f, 0.0f);
     horizontal.p2 = glm::vec2(-1.0f, 0.0f);
 
-    // _2d::Cross cross(vertical, horizontal, velocity, angular_velocity);
     do {
         glClear( GL_COLOR_BUFFER_BIT );
    
         ERRORGL("Error before draw loop");
         animation.draw_call();
-        // cross.draw_call();
         maze.draw_call();
         player.draw_call();
         ERRORGL("Error after draw loop");
@@ -605,31 +603,21 @@ void MyWin::MainLoop() {
         if (glfwGetKey(win(), GLFW_KEY_DOWN ) == GLFW_PRESS) {
             DEBUGLN("DOWN");
             player.offset += glm::vec2(0.0f, -0.01f);
-            
-            //cross.rotate(_2d::Rotation::Clockwise);
         } else if (glfwGetKey(win(), GLFW_KEY_UP ) == GLFW_PRESS) {
             DEBUGLN("UP");
             player.offset += glm::vec2(0.0f, 0.01f);
-            
-            // cross.rotate(_2d::Rotation::Counterclockwise);
         } else if (glfwGetKey(win(), GLFW_KEY_RIGHT ) == GLFW_PRESS) {
             DEBUGLN("RIGHT");
             player.offset += glm::vec2(0.01f, 0.0f);
-            // cross.move(_2d::Direction::Right);
         } else if (glfwGetKey(win(), GLFW_KEY_LEFT ) == GLFW_PRESS) { 
             DEBUGLN("LEFT");
             player.offset += glm::vec2(-0.01f, 0.0f);
-            //cross.move(_2d::Direction::Left);
-        }
-        else if (glfwGetKey(win(), GLFW_KEY_E) == GLFW_PRESS) {
+        } else if (glfwGetKey(win(), GLFW_KEY_E) == GLFW_PRESS) {
             DEBUGLN("E");
             player.angle += 0.01;
-            //cross.move(_2d::Direction::Left);
-        } 
-        else if (glfwGetKey(win(), GLFW_KEY_Q) == GLFW_PRESS) {
+        } else if (glfwGetKey(win(), GLFW_KEY_Q) == GLFW_PRESS) {
             DEBUGLN("Q");
             player.angle -= 0.01;
-            //cross.move(_2d::Direction::Left);
         }
     } while(
         glfwGetKey(win(), GLFW_KEY_ESCAPE) != GLFW_PRESS && 
