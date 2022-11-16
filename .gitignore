@@ -8,3 +8,4 @@ dependencies/
 **/.idea
 **/.vscode
 target/
+lab3/Cargo.toml
