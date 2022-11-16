@@ -9,16 +9,13 @@ use glutin::window::WindowBuilder;
 use glutin::{Api, ContextBuilder, GlRequest};
 use glutin::event::VirtualKeyCode::B;
 
-
 const GL_VERSION: (u8, u8) = (3, 3);
 
-trait GlData {
-    type Data: GlPrimitive;
-
+trait GlData<D: GlPrimitive = f32> {
     fn byte_size(&self) -> usize;
 
     fn member_size(&self) -> usize {
-        std::mem::sizeof::<Self::Data>()
+        std::mem::sizeof::<D>()
     }
 }
 
@@ -218,9 +215,29 @@ pub mod shaders {
 
 use shaders::{Shader, Program};
 
-struct BufferObject<D> where D: GlData<Data=f32> {
+struct BufferObject<Data, Primitive>
+where Data: GlData<Primitive>, Primitive: GlPrimitive
+{
     id: GLuint,
     data: D
+}
+
+impl<Data, Primitive> BufferObject<Data, Primitive>
+where Data: GlData<Primitive>, Primitive: GlPrimitive
+{
+    pub fn create(data: Data) -> Self {
+        let mut id = 0;
+        unsafe {
+            gl::CreateBuffer(&mut id);
+        }
+
+
+        Self {}
+    }
+
+    pub fn with_binded() -> BufferObjectCtx {
+
+    }
 }
 
 struct BufferObjectCtx(GLuint);
@@ -253,12 +270,12 @@ impl Drop for VertexAttributeObjectCtx {
     }
 }
 
-struct GlBinder<'data> {
-    vbos: Vec<GLuint>,
+struct GlBinder<'data, D: GlPrimitive> {
+    vbos: Vec<BufferObject<D>>,
     vao: GLuint,
     ebo: GLuint,
     program: Program,
-    uniforms: Vec<&'data dyn GlData<Data=f32>>
+    uniforms: Vec<&'data dyn GlData<D>>
 }
 
 impl<'data> GlBinder<'_> {
