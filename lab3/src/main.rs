@@ -7,8 +7,6 @@ use gl;
 use gl::BUFFER;
 use gl::types::*;
 
-
-
 use glutin::event::{Event, WindowEvent};
 use glutin::event_loop::{EventLoop, ControlFlow};
 use glutin::window::WindowBuilder;
@@ -17,11 +15,13 @@ use glutin::event::VirtualKeyCode::B;
 
 const GL_VERSION: (u8, u8) = (3, 3);
 
-trait GlData<A: Attribute> : AsRef<[A]> {
+trait Storage<A> : AsRef<[A]> where A: Attribute {
     fn byte_size(&self) -> usize {
         self.as_ref().len() * A::get_type().get_size_bytes()
     }
 }
+
+impl<A: Attribute> Storage<A> for T where T: AsRef<[A]> { }
 
 trait GlPrimitive {}
 
@@ -212,27 +212,32 @@ pub mod shaders {
 use shaders::{Shader, Program};
 
 //region BufferObject
-struct BufferObject<Data = Box<[Primitive]>, Primitive = f32>
-where Data: GlData<Primitive>, Primitive: GlPrimitive
-{
+struct BufferObject<Storage, Attribute>
+where Storage: Storage<Attribute>, Attribute: Attribute {
     id: GLuint,
-    data: D
+    buffer: Storage<Attribute>,
 }
 
-impl<Data, Primitive> BufferObject<Data, Primitive>
-where Data: GlData<Primitive>, Primitive: GlPrimitive {
-    pub fn create(data: Data) -> Self {
+impl<Storage, Attribute> BufferObject<Storage, Attribute>
+where Storage: Storage<Attribute>, Attribute: Attribute {
+    pub fn create_and_upload(buffer: Storage) -> Self {
+        let new = Self::create(buffer);
+        new.upload();
+        new
+    }
+
+    pub fn create(buffer: Storage) -> Self {
         let mut id = 0;
         unsafe {
             gl::CreateBuffers(1, &mut id);
         }
-        Self { id, data }
+        Self { id, buffer }
     }
 
     pub fn upload(&self) {
         let _ctx_manager = self.binder();
         unsafe {
-            gl::BufferData(gl::ARRAY_BUFFER, self.data.byte_size(), self.data.as_ref(), gl::STATIC_DRAW)
+            gl::BufferData(gl::ARRAY_BUFFER, self.buffer.byte_size(), self.buffer.as_ref(), gl::STATIC_DRAW)
         }
     }
 
@@ -313,28 +318,41 @@ impl Drop for VertexArrayObjectCtx {
 }
 //endregion
 
-struct GlBinder<'data, Data: GlData<Primitive>, Primitive = f32> where Primitive: GlPrimitive {
-    vbos: Vec<BufferObject<Data, Primitive>>,
+struct GlBinder<'data, Storage, Attribute>
+where
+    Storage: Storage<Attribute>,
+    Attribute: Attribute
+{
     vao: VertexArrayObject,
+    vbos: Vec<BufferObject<Storage, Attribute>>,
     ebo: GLuint,
     program: Program,
-    uniforms: Vec<&'data dyn GlData<Primitive>>
+    uniforms: Vec<&'data dyn Attribute>
 }
 
-impl<'data, D: GlPrimitive> GlBinder<'_, D> {
-    pub fn new<const BUFFER_COUNT: GLuint>() -> Self {
-        let mut vbos = Vec::from()
-        let mut vao = 0;
-
-        unsafe {
-            if BUFFER_COUNT > 0 {
-                gl::CreateBuffers(BUFFER_COUNT as _, vbos.as_mut_ptr())
-            }
-            gl::CreateVertexArrays(1, &mut vao);
+impl<'data, Storage, Attribute> GlBinder<'_, Storage, Attribute>
+where
+    Storage: Storage<Attribute>,
+    Attribute: Attribute
+{
+    pub fn new<const BUFFER_COUNT: GLuint>(data_buffers: Vec<Storage>, program: Program) -> Self {
+        let vao = VertexArrayObject::create();
+        let vbos;
+        {
+            let _vao_binder = vao.binder();
+            vbos = data_buffers
+                .iter()
+                .map(BufferObject::create_and_upload)
+                .collect::<Vec<_>>();
         }
-
+        let ebo = 0;
+        todo!("Finish uniforms");
         Self {
-
+            vao,
+            vbos,
+            ebo,
+            program,
+            uniforms: Vec::new()
         }
     }
 }
@@ -344,8 +362,6 @@ struct Triangle {
     vao: GLuint,
     program: GLuint
 }
-
-
 
 impl Triangle {
     pub fn new() -> Self {
