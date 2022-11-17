@@ -1,6 +1,8 @@
-mod attribute_format;
+mod attribute;
+mod uniform;
 
-use attribute_format::{AttributeType, Attribute};
+use attribute::{AttributeType, Attribute};
+use uniform::{Uniform};
 
 use glutin;
 use gl;
@@ -218,6 +220,8 @@ where Storage: Storage<Attribute>, Attribute: Attribute {
     buffer: Storage<Attribute>,
 }
 
+ub t
+
 impl<Storage, Attribute> BufferObject<Storage, Attribute>
 where Storage: Storage<Attribute>, Attribute: Attribute {
     pub fn create_and_upload(buffer: Storage) -> Self {
@@ -318,6 +322,27 @@ impl Drop for VertexArrayObjectCtx {
 }
 //endregion
 
+struct UniformObject<U: Uniform> {
+    layout: usize,
+    uniform: U
+}
+
+impl<U: Uniform> UniformObject<U> {
+    pub fn create(layout: usize, uniform: U) -> Self {
+        Self { layout, uniform }
+    }
+
+    pub fn bind(&self) {
+        self.uniform.bind();
+    }
+}
+
+
+/// note: BufferObject needs to be dynamically dispatched or else the type of Attribute
+///     would need to be the same. Same applies for uniforms. Thus I need traits for
+///     BufferObject that allows for creation, upload and binding (i could also provide context manager)
+///     and UniformObject that allows for binding (maybe again ctx manager?).
+///
 struct GlBinder<'data, Storage, Attribute>
 where
     Storage: Storage<Attribute>,
@@ -327,7 +352,7 @@ where
     vbos: Vec<BufferObject<Storage, Attribute>>,
     ebo: GLuint,
     program: Program,
-    uniforms: Vec<&'data dyn Attribute>
+    uniforms: Vec<Box<dyn Uniform>>
 }
 
 impl<'data, Storage, Attribute> GlBinder<'_, Storage, Attribute>
@@ -335,18 +360,16 @@ where
     Storage: Storage<Attribute>,
     Attribute: Attribute
 {
-    pub fn new<const BUFFER_COUNT: GLuint>(data_buffers: Vec<Storage>, program: Program) -> Self {
+    pub fn new(data_buffers: Vec<Storage>, program: Program) -> Self {
         let vao = VertexArrayObject::create();
-        let vbos;
-        {
+        let vbos = {
             let _vao_binder = vao.binder();
-            vbos = data_buffers
+            data_buffers
                 .iter()
                 .map(BufferObject::create_and_upload)
-                .collect::<Vec<_>>();
-        }
+                .collect::<Vec<_>>()
+        };
         let ebo = 0;
-        todo!("Finish uniforms");
         Self {
             vao,
             vbos,
@@ -365,8 +388,7 @@ struct Triangle {
 
 impl Triangle {
     pub fn new() -> Self {
-        gl::CreateVertexArrays()
-        gl::CreateBuffers()
+
     }
 }
 
