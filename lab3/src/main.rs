@@ -1,7 +1,13 @@
+mod attribute_format;
+
+use attribute_format::{AttributeType, Attribute};
+
 use glutin;
 use gl;
 use gl::BUFFER;
 use gl::types::*;
+
+
 
 use glutin::event::{Event, WindowEvent};
 use glutin::event_loop::{EventLoop, ControlFlow};
@@ -11,11 +17,9 @@ use glutin::event::VirtualKeyCode::B;
 
 const GL_VERSION: (u8, u8) = (3, 3);
 
-trait GlData<D: GlPrimitive = f32> {
-    fn byte_size(&self) -> usize;
-
-    fn member_size(&self) -> usize {
-        std::mem::sizeof::<D>()
+trait GlData<A: Attribute> : AsRef<[A]> {
+    fn byte_size(&self) -> usize {
+        self.as_ref().len() * A::get_type().get_size_bytes()
     }
 }
 
@@ -28,14 +32,6 @@ macro_rules! primitive {
 }
 
 primitive!(f32, i32);
-
-impl<T> GlData for T where T: AsRef<[GlData::Data]> {
-    type Data = f32;
-
-    fn byte_size(&self) -> usize {
-        self.as_ref().len() * self.member_size()
-    }
-}
 
 pub mod shaders {
     use gl;
@@ -215,7 +211,8 @@ pub mod shaders {
 
 use shaders::{Shader, Program};
 
-struct BufferObject<Data, Primitive>
+//region BufferObject
+struct BufferObject<Data = Box<[Primitive]>, Primitive = f32>
 where Data: GlData<Primitive>, Primitive: GlPrimitive
 {
     id: GLuint,
@@ -223,23 +220,29 @@ where Data: GlData<Primitive>, Primitive: GlPrimitive
 }
 
 impl<Data, Primitive> BufferObject<Data, Primitive>
-where Data: GlData<Primitive>, Primitive: GlPrimitive
-{
+where Data: GlData<Primitive>, Primitive: GlPrimitive {
     pub fn create(data: Data) -> Self {
         let mut id = 0;
         unsafe {
-            gl::CreateBuffer(&mut id);
+            gl::CreateBuffers(1, &mut id);
         }
-
-
-        Self {}
+        Self { id, data }
     }
 
-    pub fn with_binded() -> BufferObjectCtx {
+    pub fn upload(&self) {
+        let _ctx_manager = self.binder();
+        unsafe {
+            gl::BufferData(gl::ARRAY_BUFFER, self.data.byte_size(), self.data.as_ref(), gl::STATIC_DRAW)
+        }
+    }
 
+    pub fn binder(&self) -> BufferObjectCtx {
+        BufferObjectCtx::new(self.id)
     }
 }
+//endregion
 
+//region BufferObjectCtx
 struct BufferObjectCtx(GLuint);
 
 impl BufferObjectCtx {
@@ -254,33 +257,73 @@ impl Drop for BufferObjectCtx {
         unsafe { gl::BindBuffer(gl::VERTEX_ARRAY, 0); }
     }
 }
+//endregion
 
-struct VertexAttributeObjectCtx(GLuint);
+//region VertexArrayObject
+struct VertexArrayObject {
+    id: GLuint
+}
 
-impl VertexAttributeObjectCtx {
+impl VertexArrayObject {
+    pub fn create() -> Self {
+        let mut id = 0;
+                unsafe {
+            gl::CreateVertexArrays(1, &mut id);
+        }
+        Self { id }
+    }
+
+    pub fn binder(&self) -> VertexArrayObjectCtx {
+        VertexArrayObjectCtx::new(self.id)
+    }
+
+     pub fn set_vertex_attrib_pointer<A: Attribute>(&self, layout: GLuint) {
+         let _bind = self.binder();
+         let attrib_type = A::get_type();
+
+         unsafe {
+             gl::VertexAttribPointer(
+                 layout,
+                 attrib_type.get_num_components() as _,
+                 A::component_size(),
+                 0,
+                 0,
+                std::ptr::null(),
+             )
+         }
+
+     }
+}
+//endregion
+
+//region VertexArrayObjectCtx
+struct VertexArrayObjectCtx(GLuint);
+
+impl VertexArrayObjectCtx {
     pub fn new(vao_id: GLuint) -> Self {
         unsafe { gl::BindVertexArray(vao_id); }
         Self(vao_id)
     }
 }
 
-impl Drop for VertexAttributeObjectCtx {
+impl Drop for VertexArrayObjectCtx {
     fn drop(&mut self) {
         unsafe { gl::BindVertexArray(0); }
     }
 }
+//endregion
 
-struct GlBinder<'data, D: GlPrimitive> {
-    vbos: Vec<BufferObject<D>>,
-    vao: GLuint,
+struct GlBinder<'data, Data: GlData<Primitive>, Primitive = f32> where Primitive: GlPrimitive {
+    vbos: Vec<BufferObject<Data, Primitive>>,
+    vao: VertexArrayObject,
     ebo: GLuint,
     program: Program,
-    uniforms: Vec<&'data dyn GlData<D>>
+    uniforms: Vec<&'data dyn GlData<Primitive>>
 }
 
-impl<'data> GlBinder<'_> {
+impl<'data, D: GlPrimitive> GlBinder<'_, D> {
     pub fn new<const BUFFER_COUNT: GLuint>() -> Self {
-        let mut vbos = vec!(0, BUFFER_COUNT);
+        let mut vbos = Vec::from()
         let mut vao = 0;
 
         unsafe {
