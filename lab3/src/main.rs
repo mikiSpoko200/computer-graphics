@@ -1,394 +1,135 @@
-mod attribute;
+mod vertex;
+mod program;
 mod uniform;
 
-use attribute::{AttributeType, Attribute};
-use uniform::{Uniform};
+use uniform::Uniform;
+use program::Program;
 
 use glutin;
 use gl;
-use gl::BUFFER;
 use gl::types::*;
 
 use glutin::event::{Event, WindowEvent};
 use glutin::event_loop::{EventLoop, ControlFlow};
 use glutin::window::WindowBuilder;
-use glutin::{Api, ContextBuilder, GlRequest};
-use glutin::event::VirtualKeyCode::B;
+use glutin::{Api, GlRequest};
 
 const GL_VERSION: (u8, u8) = (3, 3);
 
-trait Storage<A> : AsRef<[A]> where A: Attribute {
-    fn byte_size(&self) -> usize {
-        self.as_ref().len() * A::get_type().get_size_bytes()
-    }
-}
-
-impl<A: Attribute> Storage<A> for T where T: AsRef<[A]> { }
-
-trait GlPrimitive {}
-
-macro_rules! primitive {
-    ($($_type:ident), +) => {
-        impl GlPrimitive for $_type {}
-    }
-}
-
-primitive!(f32, i32);
-
-pub mod shaders {
-    use gl;
-    use std;
-    use std::ffi::{CString, CStr};
-
-    pub struct Shader {
-        id: gl::types::GLuint,
-    }
-
-    impl Shader {
-        pub fn from_source(source: &CStr, kind: gl::types::GLenum) -> Result<Shader, String> {
-            let id = shader_from_source(source, kind)?;
-            Ok(Shader { id })
-        }
-
-        pub fn from_vert_source(source: &CStr) -> Result<Shader, String> {
-            Shader::from_source(source, gl::VERTEX_SHADER)
-        }
-
-        pub fn from_frag_source(source: &CStr) -> Result<Shader, String> {
-            Shader::from_source(source, gl::FRAGMENT_SHADER)
-        }
-    }
-
-    impl Drop for Shader {
-        fn drop(&mut self) {
-            unsafe {
-                gl::DeleteShader(self.id);
-            }
-        }
-    }
-
-    fn shader_from_source(source: &CStr, kind: gl::types::GLenum) -> Result<gl::types::GLuint, String> {
-        let id = unsafe { gl::CreateShader(kind) };
-        unsafe {
-            gl::ShaderSource(id, 1, &source.as_ptr(), std::ptr::null());
-            gl::CompileShader(id);
-        }
-
-        let mut success: gl::types::GLint = 1;
-        unsafe {
-            gl::GetShaderiv(id, gl::COMPILE_STATUS, &mut success);
-        }
-
-        if success == 0 {
-            let mut len: gl::types::GLint = 0;
-            unsafe {
-                gl::GetShaderiv(id, gl::INFO_LOG_LENGTH, &mut len);
-            }
-
-            let error = create_whitespace_cstring_with_len(len as usize);
-
-            unsafe {
-                gl::GetShaderInfoLog(
-                    id,
-                    len,
-                    std::ptr::null_mut(),
-                    error.as_ptr() as *mut gl::types::GLchar
-                );
-            }
-
-            return Err(error.to_string_lossy().into_owned());
-        }
-
-        Ok(id)
-    }
-
-    fn create_whitespace_cstring_with_len(len: usize) -> CString {
-        // allocate buffer of correct size
-        let mut buffer: Vec<u8> = Vec::with_capacity(len + 1);
-        // fill it with len spaces
-        buffer.extend([b' '].iter().cycle().take(len));
-        // convert buffer to CString
-        unsafe { CString::from_vec_unchecked(buffer) }
-    }
-
-    struct ProgramCtx<'program>(&'program Program);
-
-    impl<'program> ProgramCtx<'_> {
-        pub fn new(program: &'_ Program) -> Self {
-            unsafe { gl::UseProgram(program.id()) }
-            Self(program)
-        }
-    }
-
-    impl Drop for ProgramCtx<'_> {
-        fn drop(&mut self) {
-            unsafe { gl::UseProgram(0) }
-        }
-    }
-
-    pub struct Program {
-        id: gl::types::GLuint,
-    }
-
-    impl Program {
-        pub fn from_file(vertex: &std::path::Path, fragment: &std::path::Path) -> Self {
-            let v_code = std::fs::read_to_string(vertex).unwrap().into;
-            let f_code = std::fs::read_to_string(fragment).unwrap();
-
-            let v_code_raw = CString::new(v_code).unwrap();
-            let f_code_raw = CString::new(f_code).unwrap();
-
-            let v_shader = Shader::from_source(v_code_raw.as_ref(), gl::VERTEX_SHADER).unwrap();
-            let f_shader = Shader::from_source(f_code_raw.as_ref(), gl::FRAGMENT_SHADER).unwrap();
-
-            Self::new(&v_shader, &f_shader)
-        }
-
-        pub fn from_shaders<T: AsRef<Shader>>(shaders: &[T]) -> Result<Program, String> {
-            let program_id = unsafe { gl::CreateProgram() };
-
-            for shader in shaders {
-                unsafe { gl::AttachShader(program_id, shader.id()); }
-            }
-
-            unsafe { gl::LinkProgram(program_id); }
-
-            let mut success: gl::types::GLint = 1;
-            unsafe {
-                gl::GetProgramiv(program_id, gl::LINK_STATUS, &mut success);
-            }
-
-            if success == 0 {
-                let mut len: gl::types::GLint = 0;
-                unsafe {
-                    gl::GetProgramiv(program_id, gl::INFO_LOG_LENGTH, &mut len);
-                }
-
-                let error = create_whitespace_cstring_with_len(len as usize);
-
-                unsafe {
-                    gl::GetProgramInfoLog(
-                        program_id,
-                        len,
-                        std::ptr::null_mut(),
-                        error.as_ptr() as *mut gl::types::GLchar
-                    );
-                }
-
-                return Err(error.to_string_lossy().into_owned());
-            }
-
-            for shader in shaders {
-                unsafe { gl::DetachShader(program_id, shader.id()); }
-            }
-
-            Ok(Program { id: program_id })
-        }
-
-        fn new(v_shader: &Shader, f_shader: &Shader) -> Self {
-            let program = Program::from_shaders(&[v_shader, f_shader]).unwrap();
-
-            Self {
-                id: program.id
-            }
-        }
-
-        pub fn use_ctx(&self) -> ProgramCtx<'_> {
-            ProgramCtx::new(self)
-        }
-
-        pub fn id(&self) -> gl::types::GLuint {
-            self.id
-        }
-    }
-
-    impl Drop for Program {
-        fn drop(&mut self) {
-            unsafe {
-                gl::DeleteProgram(self.id);
-            }
-        }
-    }
-}
-
-use shaders::{Shader, Program};
-
-//region BufferObject
-struct BufferObject<Storage, Attribute>
-where Storage: Storage<Attribute>, Attribute: Attribute {
-    id: GLuint,
-    buffer: Storage<Attribute>,
-}
-
-ub t
-
-impl<Storage, Attribute> BufferObject<Storage, Attribute>
-where Storage: Storage<Attribute>, Attribute: Attribute {
-    pub fn create_and_upload(buffer: Storage) -> Self {
-        let new = Self::create(buffer);
-        new.upload();
-        new
-    }
-
-    pub fn create(buffer: Storage) -> Self {
-        let mut id = 0;
-        unsafe {
-            gl::CreateBuffers(1, &mut id);
-        }
-        Self { id, buffer }
-    }
-
-    pub fn upload(&self) {
-        let _ctx_manager = self.binder();
-        unsafe {
-            gl::BufferData(gl::ARRAY_BUFFER, self.buffer.byte_size(), self.buffer.as_ref(), gl::STATIC_DRAW)
-        }
-    }
-
-    pub fn binder(&self) -> BufferObjectCtx {
-        BufferObjectCtx::new(self.id)
-    }
-}
-//endregion
-
-//region BufferObjectCtx
-struct BufferObjectCtx(GLuint);
-
-impl BufferObjectCtx {
-    pub fn new(buffer_id: GLuint) -> Self {
-        unsafe { gl::BindBuffer(gl::VERTEX_ARRAY, buffer_id) }
-        Self(buffer_id)
-    }
-}
-
-impl Drop for BufferObjectCtx {
-    fn drop(&mut self) {
-        unsafe { gl::BindBuffer(gl::VERTEX_ARRAY, 0); }
-    }
-}
-//endregion
-
-//region VertexArrayObject
-struct VertexArrayObject {
-    id: GLuint
-}
-
-impl VertexArrayObject {
-    pub fn create() -> Self {
-        let mut id = 0;
-                unsafe {
-            gl::CreateVertexArrays(1, &mut id);
-        }
-        Self { id }
-    }
-
-    pub fn binder(&self) -> VertexArrayObjectCtx {
-        VertexArrayObjectCtx::new(self.id)
-    }
-
-     pub fn set_vertex_attrib_pointer<A: Attribute>(&self, layout: GLuint) {
-         let _bind = self.binder();
-         let attrib_type = A::get_type();
-
-         unsafe {
-             gl::VertexAttribPointer(
-                 layout,
-                 attrib_type.get_num_components() as _,
-                 A::component_size(),
-                 0,
-                 0,
-                std::ptr::null(),
-             )
-         }
-
-     }
-}
-//endregion
-
-//region VertexArrayObjectCtx
-struct VertexArrayObjectCtx(GLuint);
-
-impl VertexArrayObjectCtx {
-    pub fn new(vao_id: GLuint) -> Self {
-        unsafe { gl::BindVertexArray(vao_id); }
-        Self(vao_id)
-    }
-}
-
-impl Drop for VertexArrayObjectCtx {
-    fn drop(&mut self) {
-        unsafe { gl::BindVertexArray(0); }
-    }
-}
-//endregion
-
-struct UniformObject<U: Uniform> {
-    layout: usize,
-    uniform: U
-}
-
-impl<U: Uniform> UniformObject<U> {
-    pub fn create(layout: usize, uniform: U) -> Self {
-        Self { layout, uniform }
-    }
-
-    pub fn bind(&self) {
-        self.uniform.bind();
-    }
-}
-
-
-/// note: BufferObject needs to be dynamically dispatched or else the type of Attribute
-///     would need to be the same. Same applies for uniforms. Thus I need traits for
-///     BufferObject that allows for creation, upload and binding (i could also provide context manager)
-///     and UniformObject that allows for binding (maybe again ctx manager?).
-///
-struct GlBinder<'data, Storage, Attribute>
-where
-    Storage: Storage<Attribute>,
-    Attribute: Attribute
-{
-    vao: VertexArrayObject,
-    vbos: Vec<BufferObject<Storage, Attribute>>,
+pub struct Binder {
+    vao: vertex::ArrayObject,
+    vbos: Vec<Box<dyn vertex::Buffer>>,
+    #[allow(unused)]
     ebo: GLuint,
     program: Program,
     uniforms: Vec<Box<dyn Uniform>>
 }
 
-impl<'data, Storage, Attribute> GlBinder<'_, Storage, Attribute>
-where
-    Storage: Storage<Attribute>,
-    Attribute: Attribute
-{
-    pub fn new(data_buffers: Vec<Storage>, program: Program) -> Self {
-        let vao = VertexArrayObject::create();
-        let vbos = {
-            let _vao_binder = vao.binder();
-            data_buffers
-                .iter()
-                .map(BufferObject::create_and_upload)
-                .collect::<Vec<_>>()
-        };
+impl Binder {
+    pub fn new(vbos: Vec<Box<dyn vertex::Buffer>>, uniforms: Vec<Box<dyn Uniform>>,  program: Program) -> Self {
+        let vao = vertex::ArrayObject::create();
         let ebo = 0;
-        Self {
-            vao,
-            vbos,
-            ebo,
-            program,
-            uniforms: Vec::new()
+        Self { vao, vbos, ebo, program, uniforms }
+    }
+
+    pub fn upload(&mut self) {
+
+        // fixme: attribute / uniform layout provider - as of now layouts are specified in order.
+        //      quick solution -> print the manifest of (current layout - glsl lifetime - name)?
+
+        let _program_scoped_binder = self.program.scoped_binder();
+        for (index, uniform) in self.uniforms.iter().enumerate() {
+            uniform.bind(index as _);
         }
+
+        let _vao_binder = self.vao.scoped_binder();
+        for (index, vbo) in self.vbos.iter().enumerate() {
+            let _scoped_binder = vbo.scoped_binder();
+            vbo.upload();
+            self.vao.set_vertex_attrib_pointer(index as _, &vbo.attr_type(), &_vao_binder);
+        }
+    }
+
+    pub(self) fn vao_binder(&self) -> vertex::array_object::ScopedBinder {
+        self.vao.scoped_binder()
+    }
+
+    pub(self) fn program_binder(&self) -> program::ScopedBinder { self.program.scoped_binder() }
+
+    pub fn draw_binder(&self) -> DrawScopedBinder {
+        DrawScopedBinder::new(self.program_binder(), self.vao_binder())
+    }
+}
+
+pub struct DrawScopedBinder(program::ScopedBinder, vertex::array_object::ScopedBinder);
+
+impl DrawScopedBinder {
+    pub fn new(program: program::ScopedBinder, vao: vertex::array_object::ScopedBinder) -> Self {
+        Self(program, vao)
+    }
+}
+
+
+pub fn draw(vertex_count: usize) {
+    unsafe {
+        gl::DrawArrays(gl::TRIANGLES, 0, vertex_count as _);
     }
 }
 
 struct Triangle {
-    vbos: Vec<GLuint>,
-    vao: GLuint,
-    program: GLuint
+    binder: Binder
+}
+
+macro_rules! attributes {
+    () => {
+        Vec::new().into_boxed_slice();
+    };
+    ($elem: expr; $n: expr) => (
+        $crate::std::Vec::from_iter(
+            $crate::iter::repeat($elem).take($n)
+        ).into_boxed_slice()
+    );
+    ($($x:expr),+ $(,)?) => {
+        vec!($( $crate::vertex::AttributeArray::from($x)),+).into_boxed_slice()
+    };
 }
 
 impl Triangle {
     pub fn new() -> Self {
+        let triangle = attributes!(
+            (-0.5, 0.0), 
+            ( 0.5, 0.0), 
+            ( 0.0, 0.8f32)
+        );
 
+        let colors = attributes!(
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0f32)
+        );
+
+        let trig_buffer = vertex::BufferObject::create(
+            &triangle, <(f32, f32) as vertex::Attribute>::get_type()
+        );
+
+        let color_buffer = vertex::BufferObject::create(
+            &colors, <(f32, f32, f32) as vertex::Attribute>::get_type()
+        );
+
+        let program = Program::from_file(
+            "shaders/triangle_v.glsl".as_ref(), 
+            "shaders/triangle_f.glsl".as_ref()
+        );
+        let mut binder = Binder::new(vec!(Box::new(trig_buffer), Box::new(color_buffer)), Vec::new(), program);
+        binder.upload();
+        Self {
+            binder
+        }
+    }
+
+    pub fn draw(&self) {
+        let _draw_binder = self.binder.draw_binder();
+        draw(3);
     }
 }
 
@@ -411,9 +152,10 @@ fn main() {
 
     gl::load_with(|ptr| gl_context.get_proc_address(ptr) as *const _);
 
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
+    let tirangle = Triangle::new();
 
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Wait; 
         match event {
             Event::LoopDestroyed => (),
             Event::WindowEvent { event, .. } => match event {
@@ -429,5 +171,9 @@ fn main() {
             }
             _ => (),
         }
+        unsafe {
+            gl::ClearColor(0.0, 0.3, 0.3, 1.0);
+        }
+        tirangle.draw();
     });
 }

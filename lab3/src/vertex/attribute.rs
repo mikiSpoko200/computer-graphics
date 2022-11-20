@@ -1,5 +1,6 @@
-use std::borrow::Cow;
+use std::fmt::Debug;
 use std::mem;
+use crate::gl::{BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, INT, UNSIGNED_INT, FLOAT, DOUBLE};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum AttributeType {
@@ -140,7 +141,7 @@ pub enum AttributeType {
 
 impl AttributeType {
     /// Returns the size in bytes of a value of this type.
-    pub fn get_size_bytes(&self) -> usize {
+    pub fn size_bytes(&self) -> usize {
         match *self {
             AttributeType::I8 => 1 * mem::size_of::<i8>(),
             AttributeType::I8I8 => 2 * mem::size_of::<i8>(),
@@ -222,8 +223,64 @@ impl AttributeType {
         }
     }
 
+    pub fn component_type(&self) -> gl::types::GLenum {
+        match *self {
+            AttributeType::I8 => BYTE,
+            AttributeType::I8I8 => BYTE,
+            AttributeType::I8I8I8 => BYTE,
+            AttributeType::I8I8I8I8 => BYTE,
+            AttributeType::U8 => UNSIGNED_BYTE,
+            AttributeType::U8U8 => UNSIGNED_BYTE,
+            AttributeType::U8U8U8 => UNSIGNED_BYTE,
+            AttributeType::U8U8U8U8 => UNSIGNED_BYTE,
+            AttributeType::I16 => SHORT,
+            AttributeType::I16I16 => SHORT,
+            AttributeType::I16I16I16 => SHORT,
+            AttributeType::I16I16I16I16 => SHORT,
+            AttributeType::U16 => UNSIGNED_SHORT,
+            AttributeType::U16U16 => UNSIGNED_SHORT,
+            AttributeType::U16U16U16 => UNSIGNED_SHORT,
+            AttributeType::U16U16U16U16 => UNSIGNED_SHORT,
+            AttributeType::I32 => INT,
+            AttributeType::I32I32 => INT,
+            AttributeType::I32I32I32 => INT,
+            AttributeType::I32I32I32I32 => INT,
+            AttributeType::U32 => UNSIGNED_INT,
+            AttributeType::U32U32 => UNSIGNED_INT,
+            AttributeType::U32U32U32 => UNSIGNED_INT,
+            AttributeType::U32U32U32U32 => UNSIGNED_INT,
+            AttributeType::F32 => FLOAT,
+            AttributeType::F32F32 => FLOAT,
+            AttributeType::F32F32F32 => FLOAT,
+            AttributeType::F32F32F32F32 => FLOAT,
+            AttributeType::F32x2x2 => FLOAT,
+            AttributeType::F32x2x3 => FLOAT,
+            AttributeType::F32x2x4 => FLOAT,
+            AttributeType::F32x3x2 => FLOAT,
+            AttributeType::F32x3x3 => FLOAT,
+            AttributeType::F32x3x4 => FLOAT,
+            AttributeType::F32x4x2 => FLOAT,
+            AttributeType::F32x4x3 => FLOAT,
+            AttributeType::F32x4x4 => FLOAT,
+            AttributeType::F64 => DOUBLE,
+            AttributeType::F64F64 => DOUBLE,
+            AttributeType::F64F64F64 => DOUBLE,
+            AttributeType::F64F64F64F64 => DOUBLE,
+            AttributeType::F64x2x2 => DOUBLE,
+            AttributeType::F64x2x3 => DOUBLE,
+            AttributeType::F64x2x4 => DOUBLE,
+            AttributeType::F64x3x2 => DOUBLE,
+            AttributeType::F64x3x3 => DOUBLE,
+            AttributeType::F64x3x4 => DOUBLE,
+            AttributeType::F64x4x2 => DOUBLE,
+            AttributeType::F64x4x3 => DOUBLE,
+            AttributeType::F64x4x4 => DOUBLE,
+            _ => panic!("Unsupported type")
+        }
+    }
+
     /// Returns the number of values for this type.
-    pub fn get_num_components(&self) -> usize {
+    pub fn component_count(&self) -> usize {
         match *self {
             AttributeType::I8 => 1,
             AttributeType::I8I8 => 2,
@@ -306,87 +363,156 @@ impl AttributeType {
     }
 }
 
-// todo: generate this using macros
-pub trait Attribute: ComponentSize {
-    fn get_type() -> AttributeType;
+pub trait GlPrimitive: Copy + Debug {}
+
+macro_rules! gl_primitive {
+    ($type_:ty) => {
+        impl GlPrimitive for $type_ {}
+    }
 }
 
-pub trait ComponentSize {
-    fn component_size() -> gl::types::GLenum;
-}
+gl_primitive!(u8);
+gl_primitive!(u16);
+gl_primitive!(u32);
+gl_primitive!(i8);
+gl_primitive!(i16);
+gl_primitive!(i32);
+gl_primitive!(f32);
+gl_primitive!(f64);
 
-macro_rules! impl_component_size {
-    ($type_:ty, $value: expr) => {
-        impl ComponentSize for $type_ {
-            fn component_size() -> gl::types::GLenum {
-                $value
+macro_rules! impl_from_attributes {
+    ($primitive: ty) => {
+        impl From<$primitive> for AttributeArray<$primitive> {
+            fn from(data: $primitive) -> Self {
+                Self { data: vec!(data).into_boxed_slice() }
             }
         }
 
-        impl ComponentSize for ($type_, $type_) {
-            fn component_size() -> gl::types::GLenum {
-                $value
+        impl From<($primitive, $primitive)> for AttributeArray<$primitive> {
+            fn from(data: ($primitive, $primitive)) -> Self {
+                Self { data: vec!(data.0, data.1).into_boxed_slice() }
             }
         }
 
-        impl ComponentSize for ($type_, $type_, $type_) {
-            fn component_size() -> gl::types::GLenum {
-                $value
+        impl From<($primitive, $primitive, $primitive)> for AttributeArray<$primitive> {
+            fn from(data: ($primitive, $primitive, $primitive)) -> Self {
+                Self { data: vec!(data.0, data.1, data.2).into_boxed_slice() }
             }
         }
 
-        impl ComponentSize for ($type_, $type_, $type_, $type_) {
-            fn component_size() -> gl::types::GLenum {
-                $value
+        impl From<($primitive, $primitive, $primitive, $primitive)> for AttributeArray<$primitive> {
+            fn from(data: ($primitive, $primitive, $primitive, $primitive)) -> Self {
+                Self { data: vec!(data.0, data.1, data.2, data.3).into_boxed_slice() }
             }
         }
 
-        impl ComponentSize for [$type_; 2] {
-            fn component_size() -> gl::types::GLenum {
-                $value
+        impl From<[$primitive; 2]> for AttributeArray<$primitive> {
+            fn from(data: [$primitive; 2]) -> Self {
+                let data: Box<[$primitive]> = Vec::from(data).into_boxed_slice();
+                Self { data }
             }
         }
 
-        impl ComponentSize for [$type_; 3] {
-            fn component_size() -> gl::types::GLenum {
-                $value
+        impl From<[$primitive; 3]> for AttributeArray<$primitive> {
+            fn from(data: [$primitive; 3]) -> Self {
+                let data: Box<[$primitive]> = Vec::from(data).into_boxed_slice();
+                Self { data }
             }
         }
 
-        impl ComponentSize for [$type_; 4] {
-            fn component_size() -> gl::types::GLenum {
-                $value
+        impl From<[$primitive; 4]> for AttributeArray<$primitive> {
+            fn from(data: [$primitive; 4]) -> Self {
+                let data: Box<[$primitive]> = Vec::from(data).into_boxed_slice();
+                Self { data }
             }
         }
 
-        impl ComponentSize for [[$type_; 2]; 2] {
-            fn component_size() -> gl::types::GLenum {
-                $value
+        impl From<[$primitive; 9]> for AttributeArray<$primitive> {
+            fn from(data: [$primitive; 9]) -> Self {
+                let data: Box<[$primitive]> = Vec::from(data).into_boxed_slice();
+                Self { data }
             }
         }
 
-        impl ComponentSize for [[$type_; 3]; 3] {
-            fn component_size() -> gl::types::GLenum {
-                $value
+        impl From<[$primitive; 16]> for AttributeArray<$primitive> {
+            fn from(data: [$primitive; 16]) -> Self {
+                let data: Box<[$primitive]> = Vec::from(data).into_boxed_slice();
+                Self { data }
             }
         }
 
-        impl ComponentSize for [[$type_; 4]; 4] {
-            fn component_size() -> gl::types::GLenum {
-                $value
+        impl From<[[$primitive; 2]; 2]> for AttributeArray<$primitive> {
+            fn from(data: [[$primitive; 2]; 2]) -> Self {
+                let data: Box<[$primitive]> = Vec::from_iter(data.into_iter().flat_map(|arr| arr)).into_boxed_slice();
+                Self { data }
+            }
+        }
+
+        impl From<[[$primitive; 3]; 3]> for AttributeArray<$primitive> {
+            fn from(data: [[$primitive; 3]; 3]) -> Self {
+                let data: Box<[$primitive]> = Vec::from_iter(data.into_iter().flat_map(|arr| arr)).into_boxed_slice();
+                Self { data }
+            }
+        }
+
+        impl From<[[$primitive; 4]; 4]> for AttributeArray<$primitive> {
+            fn from(data: [[$primitive; 4]; 4]) -> Self {
+                let data: Box<[$primitive]> = Vec::from_iter(data.into_iter().flat_map(|arr| arr)).into_boxed_slice();
+                Self { data }
             }
         }
     }
 }
 
-impl_component_size!(i8, gl::BYTE);
-impl_component_size!(u8, gl::UNSIGNED_BYTE);
-impl_component_size!(i16, gl::SHORT);
-impl_component_size!(u16, gl::UNSIGNED_SHORT);
-impl_component_size!(i32, gl::INT);
-impl_component_size!(u32, gl::UNSIGNED_INT);
-impl_component_size!(f32, gl::FLOAT);
-impl_component_size!(f64, gl::DOUBLE);
+#[derive(Debug, Clone)]
+pub struct AttributeArray<P: GlPrimitive> {
+    data: Box<[P]>,
+}
+
+impl<P: GlPrimitive> AttributeArray<P> {
+    
+}
+    
+
+impl<P> AsRef<[P]> for AttributeArray<P>
+where
+    P: GlPrimitive
+{
+    fn as_ref(&self) -> &[P] {
+        self.data.as_ref()
+    }
+}
+
+impl_from_attributes!(u8);
+impl_from_attributes!(u16);
+impl_from_attributes!(u32);
+impl_from_attributes!(i8);
+impl_from_attributes!(i16);
+impl_from_attributes!(i32);
+impl_from_attributes!(f32);
+impl_from_attributes!(f64);
+
+pub trait Attribute {
+    fn get_type() -> AttributeType;
+}
+
+// macro_rules! impl_attribute {
+//     ($type_:ty, $pointer_type: ty, $enum_type: ident) => {
+//         impl Attribute for $type_ {
+//             fn get_type() -> AttributeType { AttributeType::$enum_type }
+//         }
+//     }
+// }
+//
+// impl_attribute!(f32, f32, F32);
+// impl_attribute!([f32; 2], f32, F32F32);
+// impl_attribute!([f32; 3], f32, F32F32F32);
+// impl_attribute!([f32; 4], f32, F32F32F32F32);
+// impl_attribute!([f32; 9], f32, F32x3x3);
+// impl_attribute!([f32; 16], f32, F32x4x4);
+// impl_attribute!([[f32; 2]; 2], f32, F32x4x4);
+// impl_attribute!([[f32; 3]; 3], f32, F32x3x3);
+// impl_attribute!([[f32; 4]; 4], f32, F32x4x4);
 
 //region i8
 impl Attribute for i8 {
@@ -695,109 +821,109 @@ impl Attribute for [u32; 4] {
 //endregion
 
 //region i64
-// impl Attribute for i64 {
-//     #[inline]
-//     fn get_type() -> AttributeType {
-//         AttributeType::I64
-//     }
-// }
-//
-// impl Attribute for (i64, i64) {
-//     #[inline]
-//     fn get_type() -> AttributeType {
-//         AttributeType::I64I64
-//     }
-// }
-//
-// impl Attribute for [i64; 2] {
-//     #[inline]
-//     fn get_type() -> AttributeType {
-//         AttributeType::I64I64
-//     }
-// }
-//
-// impl Attribute for (i64, i64, i64) {
-//     #[inline]
-//     fn get_type() -> AttributeType {
-//         AttributeType::I64I64I64
-//     }
-// }
-//
-// impl Attribute for [i64; 3] {
-//     #[inline]
-//     fn get_type() -> AttributeType {
-//         AttributeType::I64I64I64
-//     }
-// }
-//
-// impl Attribute for (i64, i64, i64, i64) {
-//     #[inline]
-//     fn get_type() -> AttributeType {
-//         AttributeType::I64I64I64I64
-//     }
-// }
-//
-// impl Attribute for [i64; 4] {
-//     #[inline]
-//     fn get_type() -> AttributeType {
-//         AttributeType::I64I64I64I64
-//     }
-// }
+impl Attribute for i64 {
+    #[inline]
+    fn get_type() -> AttributeType {
+        AttributeType::I64
+    }
+}
+
+impl Attribute for (i64, i64) {
+    #[inline]
+    fn get_type() -> AttributeType {
+        AttributeType::I64I64
+    }
+}
+
+impl Attribute for [i64; 2] {
+    #[inline]
+    fn get_type() -> AttributeType {
+        AttributeType::I64I64
+    }
+}
+
+impl Attribute for (i64, i64, i64) {
+    #[inline]
+    fn get_type() -> AttributeType {
+        AttributeType::I64I64I64
+    }
+}
+
+impl Attribute for [i64; 3] {
+    #[inline]
+    fn get_type() -> AttributeType {
+        AttributeType::I64I64I64
+    }
+}
+
+impl Attribute for (i64, i64, i64, i64) {
+    #[inline]
+    fn get_type() -> AttributeType {
+        AttributeType::I64I64I64I64
+    }
+}
+
+impl Attribute for [i64; 4] {
+    #[inline]
+    fn get_type() -> AttributeType {
+        AttributeType::I64I64I64I64
+    }
+}
 //endregion
 
 //region u64
-// impl Attribute for u64 {
-//     #[inline]
-//     fn get_type() -> AttributeType {
-//         AttributeType::U64
-//     }
-// }
-//
-// impl Attribute for (u64, u64) {
-//     #[inline]
-//     fn get_type() -> AttributeType {
-//         AttributeType::U64U64
-//     }
-// }
-//
-// impl Attribute for [u64; 2] {
-//     #[inline]
-//     fn get_type() -> AttributeType {
-//         AttributeType::U64U64
-//     }
-// }
-//
-// impl Attribute for (u64, u64, u64) {
-//     #[inline]
-//     fn get_type() -> AttributeType {
-//         AttributeType::U64U64U64
-//     }
-// }
-//
-// impl Attribute for [u64; 3] {
-//     #[inline]
-//     fn get_type() -> AttributeType {
-//         AttributeType::U64U64U64
-//     }
-// }
-//
-// impl Attribute for (u64, u64, u64, u64) {
-//     #[inline]
-//     fn get_type() -> AttributeType {
-//         AttributeType::U64U64U64U64
-//     }
-// }
-//
-// impl Attribute for [u64; 4] {
-//     #[inline]
-//     fn get_type() -> AttributeType {
-//         AttributeType::U64U64U64U64
-//     }
-// }
+impl Attribute for u64 {
+    #[inline]
+    fn get_type() -> AttributeType {
+        AttributeType::U64
+    }
+}
+
+impl Attribute for (u64, u64) {
+    #[inline]
+    fn get_type() -> AttributeType {
+        AttributeType::U64U64
+    }
+}
+
+impl Attribute for [u64; 2] {
+    #[inline]
+    fn get_type() -> AttributeType {
+        AttributeType::U64U64
+    }
+}
+
+impl Attribute for (u64, u64, u64) {
+    #[inline]
+    fn get_type() -> AttributeType {
+        AttributeType::U64U64U64
+    }
+}
+
+impl Attribute for [u64; 3] {
+    #[inline]
+    fn get_type() -> AttributeType {
+        AttributeType::U64U64U64
+    }
+}
+
+impl Attribute for (u64, u64, u64, u64) {
+    #[inline]
+    fn get_type() -> AttributeType {
+        AttributeType::U64U64U64U64
+    }
+}
+
+impl Attribute for [u64; 4] {
+    #[inline]
+    fn get_type() -> AttributeType {
+        AttributeType::U64U64U64U64
+    }
+}
 //endregion
 
+
 //region f32
-component_size!(f32, gl::FLOAT);
 impl Attribute for f32 {
     #[inline]
     fn get_type() -> AttributeType {
@@ -818,6 +944,7 @@ impl Attribute for [f32; 2] {
         AttributeType::F32F32
     }
 }
+
 impl Attribute for (f32, f32, f32) {
     #[inline]
     fn get_type() -> AttributeType {
@@ -867,6 +994,7 @@ impl Attribute for [[f32; 4]; 4] {
     }
 }
 //endregion
+
 
 //region f64
 impl Attribute for f64 {
