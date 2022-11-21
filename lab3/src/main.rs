@@ -16,6 +16,32 @@ use glutin::{Api, GlRequest};
 
 const GL_VERSION: (u8, u8) = (3, 3);
 
+#[macro_export]
+macro_rules! gl_assert {
+    ($s:stmt) => {
+        $s;
+        if cfg!(debug_assertions) {
+            let err = gl::GetError();
+            match err {
+                gl::NO_ERROR => {
+                },
+               _ => {
+                    match err {
+                        gl::INVALID_ENUM => panic!("GL_INVALID_ENUM"),
+                        gl::INVALID_VALUE => panic!("GL_INVALID_VALUE"),
+                        gl::INVALID_OPERATION => panic!("GL_INVALID_OPERATION"),
+                        gl::INVALID_FRAMEBUFFER_OPERATION => panic!("GL_INVALID_FRAMEBUFFER_OPERATION"),
+                        gl::OUT_OF_MEMORY => panic!("GL_OUT_OF_MEMORY"),
+                        gl::STACK_UNDERFLOW => panic!("GL_STACK_UNDERFLOW"),
+                        gl::STACK_OVERFLOW => panic!("GL_STACK_OVERFLOW"),
+                        _ => panic!("unknown error")
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub struct Binder {
     vao: vertex::ArrayObject,
     vbos: Vec<Box<dyn vertex::Buffer>>,
@@ -129,6 +155,7 @@ impl Triangle {
 
     pub fn draw(&self) {
         let _draw_binder = self.binder.draw_binder();
+
         draw(3);
     }
 }

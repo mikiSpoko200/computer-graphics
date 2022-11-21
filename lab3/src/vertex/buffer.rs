@@ -3,6 +3,8 @@ use gl;
 use gl::types::GLuint;
 use crate::vertex::attribute::AttributeType;
 
+use crate::gl_assert;
+
 /// Trait that represents an owner of vertex::Attributes
 pub trait Buffer {
     fn upload(&self);
@@ -17,7 +19,7 @@ pub trait Buffer {
 }
 
 //region BufferObject
-/// Abstracted buffer object that can work on any contiguous collection of vertex attributes.
+///
 #[derive(Debug)]
 pub struct BufferObject<P: GlPrimitive> {
     id: GLuint,
@@ -37,7 +39,7 @@ impl<P: GlPrimitive> BufferObject<P> {
 
         let mut id = 0;
         unsafe {
-            gl::CreateBuffers(1, &mut id);
+            gl_assert!(gl::CreateBuffers(1, &mut id));
         }
         Self { id, buffer: local, attr_type }
     }
@@ -46,12 +48,14 @@ impl<P: GlPrimitive> BufferObject<P> {
 impl<P: GlPrimitive> Buffer for BufferObject<P> {
     fn upload(&self) {
         unsafe {
-            gl::BufferData(
-                gl::ARRAY_BUFFER, 
-                (self.buffer.len() * std::mem::size_of::<P>()) as _,
-                self.buffer.as_ptr() as *const std::ffi::c_void,
-                gl::STATIC_DRAW
-            )
+            gl_assert!(
+                gl::BufferData(
+                    gl::ARRAY_BUFFER,
+                    (self.buffer.len() * std::mem::size_of::<P>()) as _,
+                    self.buffer.as_ptr() as *const std::ffi::c_void,
+                    gl::STATIC_DRAW
+                )
+            );
         }
     }
 

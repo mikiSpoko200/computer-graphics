@@ -2,6 +2,8 @@ use gl;
 use gl::types::GLuint;
 use std::ffi::{CString, CStr};
 
+use crate::gl_assert;
+
 pub struct Shader {
     id: GLuint,
 }
@@ -81,13 +83,15 @@ pub struct ScopedBinder(GLuint);
 
 impl ScopedBinder {
     pub fn new(program_id: GLuint) -> Self {
-        unsafe { gl::UseProgram(program_id) }
+        println!("Binding program {program_id}");
+        unsafe { gl_assert!(gl::UseProgram(program_id)); }
         Self(program_id)
     }
 }
 
 impl Drop for ScopedBinder {
     fn drop(&mut self) {
+        println!("Unbinding program {}", self.0);
         unsafe { gl::UseProgram(0) }
     }
 }

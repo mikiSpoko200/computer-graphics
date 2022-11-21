@@ -2,6 +2,8 @@ use gl::types::GLuint;
 use std::collections::HashSet;
 use crate::vertex::attribute::AttributeType;
 
+use crate::gl_assert;
+
 pub struct ArrayObject {
     enabled_attrs: HashSet<GLuint>,
     id: GLuint
@@ -11,7 +13,7 @@ impl ArrayObject {
     pub fn create() -> Self {
         let mut id = 0;
         unsafe {
-            gl::CreateVertexArrays(1, &mut id);
+            gl_assert!(gl::CreateVertexArrays(1, &mut id));
         }
         Self { id, enabled_attrs: HashSet::new() }
     }
@@ -21,20 +23,20 @@ impl ArrayObject {
     }
 
     pub fn set_vertex_attrib_pointer(&mut self, layout: GLuint, attr: &AttributeType, _binder: &ScopedBinder) {
-        println!("Setting attribute pointer");
-        if !self.enabled_attrs.contains(&layout) {
-            self.enabled_attrs.insert(layout);
+        println!("Setting attribute pointer, layout(location = {layout})");
+        // if !self.enabled_attrs.contains(&layout) {
+        //     self.enabled_attrs.insert(layout);
             unsafe {
                 gl::EnableVertexAttribArray(layout);
             }
-        }
+        // }
 
         unsafe {
             gl::VertexAttribPointer(
                 layout,
                 attr.component_count() as _,
                 attr.component_type(),
-                0,
+                gl::FALSE,
                 0,
                 std::ptr::null(),
             )
