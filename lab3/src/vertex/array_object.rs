@@ -26,20 +26,22 @@ impl ArrayObject {
         println!("Setting attribute pointer, layout(location = {layout})");
         // if !self.enabled_attrs.contains(&layout) {
         //     self.enabled_attrs.insert(layout);
-            unsafe {
-                gl::EnableVertexAttribArray(layout);
-            }
+        unsafe {
+            gl_assert!(gl::EnableVertexAttribArray(layout));
+        }
         // }
 
         unsafe {
-            gl::VertexAttribPointer(
-                layout,
-                attr.component_count() as _,
-                attr.component_type(),
-                gl::FALSE,
-                0,
-                std::ptr::null(),
-            )
+            gl_assert!(
+                gl::VertexAttribPointer(
+                    layout,
+                    attr.component_count() as _,
+                    attr.component_type(),
+                    gl::FALSE,
+                    0,
+                    std::ptr::null(),
+                )
+            );
         }
     }
 }
@@ -49,7 +51,7 @@ pub struct ScopedBinder(GLuint);
 impl ScopedBinder {
     pub fn new(vao_id: GLuint) -> Self {
         println!("Binding vao {vao_id}");
-        unsafe { gl::BindVertexArray(vao_id); }
+        unsafe { gl_assert!(gl::BindVertexArray(vao_id)); }
         Self(vao_id)
     }
 }

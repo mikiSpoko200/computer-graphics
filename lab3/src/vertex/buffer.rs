@@ -37,6 +37,10 @@ impl<P: GlPrimitive> BufferObject<P> {
             local.extend(attr.as_ref())
         }
 
+        for elem in &local {
+            println!("{:?}", elem);
+        }
+
         let mut id = 0;
         unsafe {
             gl_assert!(gl::CreateBuffers(1, &mut id));
@@ -47,6 +51,7 @@ impl<P: GlPrimitive> BufferObject<P> {
 
 impl<P: GlPrimitive> Buffer for BufferObject<P> {
     fn upload(&self) {
+        assert!(dbg!(unsafe { gl::GetError() }) == gl::NO_ERROR);
         unsafe {
             gl_assert!(
                 gl::BufferData(
@@ -75,7 +80,8 @@ pub struct ScopedBinder(GLuint);
 impl ScopedBinder {
     pub fn new(buffer_id: GLuint) -> Self {
         println!("Binding buffer object {buffer_id}");
-        unsafe { gl::BindBuffer(gl::VERTEX_ARRAY, buffer_id) }
+        assert!(unsafe { gl::GetError() } == gl::NO_ERROR);
+        unsafe { gl_assert!(gl::BindBuffer(gl::ARRAY_BUFFER, buffer_id)); }
         Self(buffer_id)
     }
 }

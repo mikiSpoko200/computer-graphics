@@ -4,6 +4,7 @@ mod uniform;
 
 use uniform::Uniform;
 use program::Program;
+use vertex::Attribute;
 
 use glutin;
 use gl;
@@ -19,7 +20,7 @@ const GL_VERSION: (u8, u8) = (3, 3);
 #[macro_export]
 macro_rules! gl_assert {
     ($s:stmt) => {
-        $s;
+        $s
         if cfg!(debug_assertions) {
             let err = gl::GetError();
             match err {
@@ -38,7 +39,7 @@ macro_rules! gl_assert {
                     }
                 }
             }
-        }
+        };
     }
 }
 
@@ -71,6 +72,7 @@ impl Binder {
         let _vao_binder = self.vao.scoped_binder();
         for (index, vbo) in self.vbos.iter().enumerate() {
             let _scoped_binder = vbo.scoped_binder();
+
             vbo.upload();
             self.vao.set_vertex_attrib_pointer(index as _, &vbo.attr_type(), &_vao_binder);
         }
@@ -123,7 +125,7 @@ macro_rules! attributes {
 impl Triangle {
     pub fn new() -> Self {
         let triangle = attributes!(
-            (-0.5, 0.0), 
+            (-0.5, 0.0),
             ( 0.5, 0.0), 
             ( 0.0, 0.8f32)
         );
@@ -135,11 +137,11 @@ impl Triangle {
         );
 
         let trig_buffer = vertex::BufferObject::create(
-            &triangle, <(f32, f32) as vertex::Attribute>::get_type()
+            &triangle, <(f32, f32) as Attribute>::get_type()
         );
 
         let color_buffer = vertex::BufferObject::create(
-            &colors, <(f32, f32, f32) as vertex::Attribute>::get_type()
+            &colors, <(f32, f32, f32) as Attribute>::get_type()
         );
 
         let program = Program::from_file(
