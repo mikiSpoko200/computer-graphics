@@ -1,48 +1,55 @@
 use gl::types::GLuint;
-use std::collections::HashSet;
-use crate::vertex::attribute::AttributeType;
+use crate::vertex::AttributeType;
 
-use crate::gl_assert;
+use crate::gl_assert_no_err;
 
 pub struct ArrayObject {
-    enabled_attrs: HashSet<GLuint>,
     id: GLuint
 }
 
 impl ArrayObject {
     pub fn create() -> Self {
         let mut id = 0;
+        gl_assert_no_err!();
         unsafe {
-            gl_assert!(gl::CreateVertexArrays(1, &mut id));
+            gl::CreateVertexArrays(1, &mut id);
         }
-        Self { id, enabled_attrs: HashSet::new() }
+        gl_assert_no_err!();
+        Self { id }
     }
 
     pub fn scoped_binder(&self) -> ScopedBinder {
         ScopedBinder::new(self.id)
     }
 
-    pub fn set_vertex_attrib_pointer(&mut self, layout: GLuint, attr: &AttributeType, _binder: &ScopedBinder) {
-        println!("Setting attribute pointer, layout(location = {layout})");
-        // if !self.enabled_attrs.contains(&layout) {
-        //     self.enabled_attrs.insert(layout);
+    pub fn set_attrib_divisor(&self, layout: usize, divisor: usize) {
+        log::debug!("Setting attribute divisor for layout(location = {}) to {}", layout, divisor);
+        gl_assert_no_err!();
         unsafe {
-            gl_assert!(gl::EnableVertexAttribArray(layout));
+            gl::VertexAttribDivisor(layout as _, divisor as _);
         }
-        // }
+        gl_assert_no_err!();
+    }
 
+    pub fn set_vertex_attrib_pointer(&self, layout: usize, attr: &AttributeType) {
+        log::debug!("Setting attribute pointer, layout(location = {})", layout);
+        log::debug!("\tAttribute type: {:?}", attr);
+        gl_assert_no_err!();
         unsafe {
-            gl_assert!(
-                gl::VertexAttribPointer(
-                    layout,
-                    attr.component_count() as _,
-                    attr.component_type(),
-                    gl::FALSE,
-                    0,
-                    std::ptr::null(),
-                )
+            gl::EnableVertexAttribArray(layout as _);
+        }
+        gl_assert_no_err!();
+        unsafe {
+            gl::VertexAttribPointer(
+                layout as _,
+                attr.component_count() as _,
+                attr.gl_type(),
+                gl::FALSE,
+                0,
+                std::ptr::null(),
             );
         }
+        gl_assert_no_err!();
     }
 }
 
@@ -50,15 +57,19 @@ pub struct ScopedBinder(GLuint);
 
 impl ScopedBinder {
     pub fn new(vao_id: GLuint) -> Self {
-        println!("Binding vao {vao_id}");
-        unsafe { gl_assert!(gl::BindVertexArray(vao_id)); }
+        log::debug!("Binding vao {}", vao_id);
+        gl_assert_no_err!();
+        unsafe { gl::BindVertexArray(vao_id); }
+        gl_assert_no_err!();
         Self(vao_id)
     }
 }
 
 impl Drop for ScopedBinder {
     fn drop(&mut self) {
-        println!("Unbinding vao {}", self.0);
+        log::debug!("Unbinding vao {}", self.0);
+        gl_assert_no_err!();
         unsafe { gl::BindVertexArray(0); }
+        gl_assert_no_err!();
     }
 }

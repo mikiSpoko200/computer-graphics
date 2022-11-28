@@ -6,4 +6,4 @@ out vec4 pixel_color;
 
 void main(void) {
    pixel_color = f_color;
-} 
+}

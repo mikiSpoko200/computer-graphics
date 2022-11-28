@@ -27,7 +27,7 @@ impl Shader {
 
 impl Drop for Shader {
     fn drop(&mut self) {
-        println!("Destroying shader");
+        log::debug!("Destroying shader");
         unsafe {
             gl::DeleteShader(self.id);
         }
@@ -82,22 +82,15 @@ pub struct ScopedBinder(GLuint);
 
 impl ScopedBinder {
     pub fn new(program_id: GLuint) -> Self {
-        println!("Binding program {program_id}");
+        log::debug!("Binding program {}", program_id);
         unsafe { gl::UseProgram(program_id); }
-        loop {
-            let err = unsafe { gl::GetError() };
-            if err == gl::NO_ERROR {
-                break;
-            }
-            println!("Error: {:?}", err);
-        }
         Self(program_id)
     }
 }
 
 impl Drop for ScopedBinder {
     fn drop(&mut self) {
-        println!("Unbinding program {}", self.0);
+        log::debug!("Unbinding program {}", self.0);
         unsafe { gl::UseProgram(0) }
     }
 }
@@ -135,7 +128,7 @@ impl Program {
         }
 
         if success == 0 {
-            println!("===== Compilation Error! ===== ");
+            eprintln!("===== Compilation Error! ===== ");
             let mut len: gl::types::GLint = 0;
             unsafe {
                 gl::GetProgramiv(program_id, gl::INFO_LOG_LENGTH, &mut len);
@@ -173,7 +166,7 @@ impl Program {
 
 impl Drop for Program {
     fn drop(&mut self) {
-        println!("Destroying program {}", self.id);
+        log::debug!("Destroying program {}", self.id);
         unsafe {
             gl::DeleteProgram(self.id);
         }
