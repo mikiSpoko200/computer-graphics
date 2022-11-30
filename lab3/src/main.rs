@@ -436,7 +436,7 @@ fn main() {
 
     let size = gl_context.window().inner_size();
     let aspect_ratio = size.width as f32 / size.height as f32;
-    let perspective = glm::perspective(aspect_ratio, f32::to_radians(120f32), 0.1, 100.0);
+    let perspective = glm::perspective(aspect_ratio, f32::to_radians(40.0), 0.1, 100.0);
     let mut camera = glm::look_at(
         &glm::vec3(0f32, 0f32, 1f32),
         &CoordinateSystem::CENTER,
@@ -450,8 +450,8 @@ fn main() {
     let trans_down  = glm::translation(&(0.01 * Directions::DOWN));
     let trans_back  = glm::translation(&(0.01 * Directions::BACK));
 
-    let right_y_rotation_matrix = glm::rotation(f32::to_radians(0.1), &Directions::UP);
-    let left_y_rotation_matrix = glm::rotation(-f32::to_radians(0.1), &Directions::UP);
+    let right_y_rotation_matrix = glm::rotation(f32::to_radians(0.5), &Directions::UP);
+    let left_y_rotation_matrix = glm::rotation(-f32::to_radians(0.5), &Directions::UP);
 
     // gl_context.window().set_inner_size(glutin::dpi::LogicalSize::new(400.0, 200.0));
     // gl_context.window().set_fullscreen(Some(glutin::window::Fullscreen::Borderless(None)));

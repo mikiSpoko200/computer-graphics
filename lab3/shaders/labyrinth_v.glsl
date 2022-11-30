@@ -13,12 +13,12 @@ vec3 from_01_to_ndc(vec3 position) {
 }
 
 vec3 instance_color(vec3 instance_ndc_position) {
-    instance_ndc_position += 1;
-    instance_ndc_position /= 2;
+    instance_ndc_position += 1.0;
+    instance_ndc_position /= 2.0;
     float r = instance_ndc_position.x * 0.6 + 0.2;
     float g = instance_ndc_position.y * 0.6 + 0.2;
     float b = instance_ndc_position.z * 0.6 + 0.2;
-    return vec3(1, 0, 1);
+    return vec3(r, g, b);
 }
 
 vec4 world_to_clip_space(vec4 position) {
