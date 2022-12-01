@@ -9,6 +9,8 @@ mod index_buffer;
 mod consts;
 mod drawing;
 
+use alloc::rc::Rc;
+use std::collections::HashMap;
 use std::default::Default;
 use nalgebra_glm as glm;
 
@@ -20,12 +22,13 @@ use vertex::{VertexAttribute, BufferObject};
 
 use glutin;
 use gl;
-use log;
 
 use glutin::event::{Event, VirtualKeyCode, WindowEvent};
 use glutin::event_loop::{EventLoop, ControlFlow};
 use glutin::window::WindowBuilder;
 use glutin::{Api, GlRequest};
+use glutin::dpi::PhysicalPosition;
+use crate::camera::Camera;
 
 // todo: Objects can emit painters which borrow data from them during upload.
 //  data must be interpretable as &[VertexAttribute], &[IndexingPrimitive] and perhaps uniforms and programs.
@@ -85,6 +88,8 @@ impl<I: IndexBuffer> Painter<I> {
         &self.binder
     }
 
+    pub fn binder_mut(&mut self) -> &mut Binder<I> { &mut self.binder }
+
     pub fn instanced(mut self, instance_count: usize) -> Self {
         self.instance_count = Some(instance_count);
         self
@@ -129,7 +134,10 @@ impl<I: IndexBuffer> Painter<I> {
 // fixme: attribute / uniform layout provider - as of now layouts are specified in order.
 //      quick solution -> print the manifest of (current layout - glsl lifetime - name)?
 
-pub struct Binder<I: IndexBuffer> {
+pub struct Binder<I>
+where
+    I: IndexBuffer
+{
     vao: vertex::ArrayObject,
     vbos: Vec<Box<dyn vertex::Buffer>>,
     ebo: IndexingMode<I>,
@@ -137,7 +145,8 @@ pub struct Binder<I: IndexBuffer> {
     uniforms: Vec<Box<dyn Uniform>>,
 }
 
-impl<I: IndexBuffer> Binder<I> {
+impl<I> Binder<I> where I: IndexBuffer,
+{
     pub fn new(
         vbos: Vec<Box<dyn vertex::Buffer>>,
         ebo: IndexingMode<I>,
@@ -148,19 +157,38 @@ impl<I: IndexBuffer> Binder<I> {
         Self { vao, vbos, ebo, program, uniforms, }
     }
 
+    // todo: scoped_binder controls if appropriate object is already bound if so it returns null binder of sort.
+    //      uniform indexes or more generally should be provided and managed by and external object.
+
+    pub fn add_uniform(&mut self, index: usize, uniform: Box<dyn Uniform>) {
+        if self.uniforms.len() > index {
+            panic!("uniform with index {} already exists", index);
+        } else {
+            self.uniforms.push(uniform)
+        }
+    }
+
+    pub fn update_uniform(&mut self, index: usize, uniform: Box<dyn Uniform>) {
+        self.uniforms[index] = uniform;
+        {
+            let _program_binder = self.program_binder();
+            self.uniforms[index].as_ref().bind(index as _);
+        }
+    }
+
     pub fn upload(&mut self) {
         let _program_scoped_binder = self.program.scoped_binder();
-        for (index, uniform) in self.uniforms.iter().enumerate() {
-            uniform.bind(index as _);
-        }
+        // for (index, uniform) in self.uniforms.iter().enumerate() {
+        //     uniform.as_ref().bind(index as _);
+        // }
 
         let _vao_binder = self.vao.scoped_binder();
         for (index, vbo) in self.vbos.iter().enumerate() {
-            let _scoped_binder = vbo.scoped_binder();
+            let _scoped_binder = vbo.as_ref().scoped_binder();
             gl_assert_no_err!();
-            vbo.upload();
+            vbo.as_ref().upload();
             gl_assert_no_err!();
-            self.vao.set_vertex_attrib_pointer(index as _, &vbo.attribute_type());
+            self.vao.set_vertex_attrib_pointer(index as _, &vbo.as_ref().attribute_type());
             gl_assert_no_err!();
         }
 
@@ -174,7 +202,7 @@ impl<I: IndexBuffer> Binder<I> {
         if let Some(ref index_buffer) = self.ebo {
             index_buffer.vertex_count()
         } else {
-            self.vbos.first().unwrap().vertex_count()
+            self.vbos.first().unwrap().as_ref().vertex_count()
         }
     }
 
@@ -434,127 +462,108 @@ fn main() {
             .expect("Failed to make context current")
     };
 
-    let size = gl_context.window().inner_size();
-    let aspect_ratio = size.width as f32 / size.height as f32;
-    let perspective = glm::perspective(aspect_ratio, f32::to_radians(40.0), 0.1, 100.0);
-    let mut camera = glm::look_at(
-        &glm::vec3(0f32, 0f32, 1f32),
-        &CoordinateSystem::CENTER,
-        &Directions::UP
-    );
+    gl::load_with(|ptr| gl_context.get_proc_address(ptr) as *const _);
 
-    let trans_right = glm::translation(&(0.01 * Directions::RIGHT));
-    let trans_up    = glm::translation(&(0.01 * Directions::UP));
-    let trans_front = glm::translation(&(0.01 * Directions::FRONT));
-    let trans_left  = glm::translation(&(0.01 * Directions::LEFT));
-    let trans_down  = glm::translation(&(0.01 * Directions::DOWN));
-    let trans_back  = glm::translation(&(0.01 * Directions::BACK));
-
-    let right_y_rotation_matrix = glm::rotation(f32::to_radians(0.5), &Directions::UP);
-    let left_y_rotation_matrix = glm::rotation(-f32::to_radians(0.5), &Directions::UP);
+    let mut camera = Camera::default();
 
     // gl_context.window().set_inner_size(glutin::dpi::LogicalSize::new(400.0, 200.0));
     // gl_context.window().set_fullscreen(Some(glutin::window::Fullscreen::Borderless(None)));
     // let size = gl_context.window().inner_size();
     // gl_context.(size);
 
-    gl::load_with(|ptr| gl_context.get_proc_address(ptr) as *const _);
 
-    let triangle = Triangle::new();
-    let ball_painter = Painter::new(sphere(), DrawMode::Triangles);
-    let triangle_painter = Painter::new(triangle.binder, DrawMode::Triangles).instanced(1000);
+    let uniforms = vec!(
+        Box::new(camera.perspective_matrix().as_ref().clone()),
+        Box::new(camera.view_matrix().as_ref().clone()),
+    );
+
+    let mut ball_painter = Painter::new(sphere(), DrawMode::Triangles);
     let light_direction = Directions::DOWN + Directions::RIGHT + Directions::FRONT;
-
     let grid_size = 5;
-    let labyrinth_painter = Painter::new(labyrinth(grid_size), DrawMode::Triangles).instanced(grid_size * grid_size * grid_size);
+    let mut labyrinth_painter = Painter::new(labyrinth(grid_size), DrawMode::Triangles).instanced(grid_size * grid_size * grid_size);
 
-    {
-        let _uniform_binder = triangle_painter.binder().program_binder();
-        unsafe {
-            gl_assert_no_err!();
-            gl::UniformMatrix4fv(0, 1, gl::FALSE, perspective.as_ptr());
-            gl_assert_no_err!();
-            gl::UniformMatrix4fv(1, 1, gl::FALSE, camera.as_ptr());
-            gl_assert_no_err!();
-            gl::Uniform1f(2, 10.0);
-            gl_assert_no_err!();
-        }
+    for (index, uniform) in uniforms.into_iter().enumerate() {
+        ball_painter.binder_mut().add_uniform(index, uniform.clone());
+        labyrinth_painter.binder_mut().add_uniform(index, uniform);
     }
 
-    {
-        let _uniform_binder = ball_painter.binder.program_binder();
-        unsafe {
-            gl_assert_no_err!();
-            gl::UniformMatrix4fv(0, 1, gl::FALSE, perspective.as_ptr());
-            gl_assert_no_err!();
-            gl::UniformMatrix4fv(1, 1, gl::FALSE, camera.as_ptr());
-            gl_assert_no_err!();
-            gl::Uniform3f(2, light_direction.x, light_direction.y, light_direction.z);
-            gl_assert_no_err!();
-        }
-    }
+    println!("Camera: {:?}", camera.view_matrix());
+    println!("Camera: {:?}", camera.perspective_matrix());
 
-    {
-        let _uniform_binder = labyrinth_painter.binder.program_binder();
-        unsafe {
-            gl_assert_no_err!();
-            gl::UniformMatrix4fv(0, 1, gl::FALSE, perspective.as_ptr());
-            gl_assert_no_err!();
-            gl::UniformMatrix4fv(1, 1, gl::FALSE, camera.as_ptr());
-            gl_assert_no_err!();
-        }
-    }
+    const PERSPECTIVE_UNIFORM: &str = "perspective";
+    const VIEW_UNIFORM: &str = "view";
+    const LIGHT_UNIFORM: &str = "light";
+
+    let uniform_name_location_mapping = HashMap::from([
+        (PERSPECTIVE_UNIFORM, 0),
+        (VIEW_UNIFORM, 1),
+        (LIGHT_UNIFORM, 2),
+    ]);
+
+    ball_painter.binder_mut().add_uniform(
+        uniform_name_location_mapping[LIGHT_UNIFORM],
+        Box::new(light_direction.as_ref().clone())
+    );
 
     gl_assert_no_err!();
     unsafe { gl::Enable(gl::DEPTH_TEST); }
     gl_assert_no_err!();
+
+    let mut mouse_pos: Option<PhysicalPosition<f64>> = None;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
         match event {
             Event::LoopDestroyed => (),
-            Event::WindowEvent { event, .. } => match event {
-                WindowEvent::KeyboardInput { input, .. } => {
-                    if let Some(keycode) = input.virtual_keycode {
-                        log::debug!("Updating position {:?}", keycode);
-                        match keycode {
-                            VirtualKeyCode::A => camera *= trans_left,
-                            VirtualKeyCode::D => camera *= trans_right,
-                            VirtualKeyCode::Q => camera *= trans_up,
-                            VirtualKeyCode::Z => camera *= trans_down,
-                            VirtualKeyCode::W => camera *= trans_front,
-                            VirtualKeyCode::S => camera *= trans_back,
-                            VirtualKeyCode::R => camera *= right_y_rotation_matrix,
-                            VirtualKeyCode::L => camera *= left_y_rotation_matrix,
-                            _ => (),
-                        };
-                        unsafe {
-                            let _uniform_binder = triangle_painter.binder().program_binder();
-                            gl_assert_no_err!();
-                            gl::UniformMatrix4fv(1, 1, gl::FALSE, camera.as_ptr());
-                            gl_assert_no_err!();
+            Event::WindowEvent { event, .. } => {
+                match event {
+                    WindowEvent::CursorMoved { position, .. } => {
+                        if let Some(old_pos) = mouse_pos {
+                            let x_diff = (old_pos.x - position.x).abs();
+                            let y_diff = (old_pos.y - position.y).abs();
+                            camera.fixed_rotate_right();
+                            //camera.rotate(x_diff as f32 / 0.01, y_diff as f32 / 0.01);
+                        } else {
+                            mouse_pos = Some(position);
                         }
-                        unsafe {
-                            let _uniform_binder = ball_painter.binder().program_binder();
-                            gl_assert_no_err!();
-                            gl::UniformMatrix4fv(1, 1, gl::FALSE, camera.as_ptr());
-                            gl_assert_no_err!();
-                        }
-                        unsafe {
-                            let _uniform_binder = labyrinth_painter.binder().program_binder();
-                            gl_assert_no_err!();
-                            gl::UniformMatrix4fv(1, 1, gl::FALSE, camera.as_ptr());
-                            gl_assert_no_err!();
+                        // ball_painter.binder_mut().update_uniform(
+                        //     uniform_name_location_mapping[VIEW_UNIFORM],
+                        //     Box::new(camera.view_matrix().as_ref().clone())
+                        // );
+                        // labyrinth_painter.binder_mut().update_uniform(
+                        //     uniform_name_location_mapping[VIEW_UNIFORM],
+                        //     Box::new(camera.view_matrix().as_ref().clone())
+                        // );
+                    }
+                    WindowEvent::KeyboardInput { input, .. } => {
+                        if let Some(keycode) = input.virtual_keycode {
+                            match keycode {
+                                VirtualKeyCode::A => camera.move_(Directions::LEFT * 0.01),
+                                VirtualKeyCode::D => camera.move_(Directions::RIGHT * 0.01),
+                                VirtualKeyCode::Q => camera.move_(Directions::UP * 0.01),
+                                VirtualKeyCode::Z => camera.move_(Directions::DOWN),
+                                VirtualKeyCode::W => camera.move_(Directions::FRONT),
+                                VirtualKeyCode::S => camera.move_(Directions::BACK),
+                                _ => (),
+                            };
+                            // ball_painter.binder_mut().update_uniform(
+                            // uniform_name_location_mapping[VIEW_UNIFORM],
+                            // Box::new(camera.view_matrix().as_ref().clone())
+                            // );
+                            // labyrinth_painter.binder_mut().update_uniform(
+                            //     uniform_name_location_mapping[VIEW_UNIFORM],
+                            //     Box::new(camera.view_matrix().as_ref().clone())
+                            // );
                         }
                     }
-                },
-                WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                _ => (),
+                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                    _ => (),
+                }
             },
             Event::RedrawRequested(_) => {
                 unsafe {
-                    gl::ClearColor(Scene::LIGHT_BLUE.x, Scene::LIGHT_BLUE.y, Scene::LIGHT_BLUE.z, 1.0);
+                    gl::ClearColor(Scene::LIGHT_BLUE.x, Scene::DARK_GRAY.y, Scene::LIGHT_BLUE.z, 1.0);
                     gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
                 }
                 gl_context.swap_buffers().unwrap();
@@ -563,8 +572,7 @@ fn main() {
         }
 
         unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); }
-        // triangle_painter.draw();
-        labyrinth_painter.draw();
+        // labyrinth_painter.draw();
         ball_painter.draw();
         gl_context.swap_buffers().unwrap();
     });

@@ -1,3 +1,4 @@
+use alloc::rc::Rc;
 use crate::{attributes, Binder};
 use crate::index_buffer::{IndexBufferObject};
 use crate::program::Program;
