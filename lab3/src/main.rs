@@ -12,6 +12,7 @@ mod drawing;
 use alloc::rc::Rc;
 use std::collections::HashMap;
 use std::default::Default;
+use std::time::{Duration, Instant};
 use nalgebra_glm as glm;
 
 use uniform::Uniform;
@@ -160,7 +161,16 @@ impl<I> Binder<I> where I: IndexBuffer,
     // todo: scoped_binder controls if appropriate object is already bound if so it returns null binder of sort.
     //      uniform indexes or more generally should be provided and managed by and external object.
 
+    pub fn bind_uniforms(&self) {
+        println!("Binding uniforms");
+        let _program_binder = self.program_binder();
+        for (index, uniform) in self.uniforms.iter().enumerate() {
+            uniform.bind(index as _);
+        }
+    }
+
     pub fn add_uniform(&mut self, index: usize, uniform: Box<dyn Uniform>) {
+        // todo: index is never stored and depends on the order in uniforms - this is terrible fix it please xoxo
         if self.uniforms.len() > index {
             panic!("uniform with index {} already exists", index);
         } else {
@@ -179,6 +189,7 @@ impl<I> Binder<I> where I: IndexBuffer,
     pub fn upload(&mut self) {
         let _program_scoped_binder = self.program.scoped_binder();
         // for (index, uniform) in self.uniforms.iter().enumerate() {
+        //     pritnln!("Binding uniforms");
         //     uniform.as_ref().bind(index as _);
         // }
 
@@ -471,24 +482,10 @@ fn main() {
     // let size = gl_context.window().inner_size();
     // gl_context.(size);
 
-
-    let uniforms = vec!(
-        Box::new(camera.perspective_matrix().as_ref().clone()),
-        Box::new(camera.view_matrix().as_ref().clone()),
-    );
-
     let mut ball_painter = Painter::new(sphere(), DrawMode::Triangles);
     let light_direction = Directions::DOWN + Directions::RIGHT + Directions::FRONT;
     let grid_size = 5;
     let mut labyrinth_painter = Painter::new(labyrinth(grid_size), DrawMode::Triangles).instanced(grid_size * grid_size * grid_size);
-
-    for (index, uniform) in uniforms.into_iter().enumerate() {
-        ball_painter.binder_mut().add_uniform(index, uniform.clone());
-        labyrinth_painter.binder_mut().add_uniform(index, uniform);
-    }
-
-    println!("Camera: {:?}", camera.view_matrix());
-    println!("Camera: {:?}", camera.perspective_matrix());
 
     const PERSPECTIVE_UNIFORM: &str = "perspective";
     const VIEW_UNIFORM: &str = "view";
@@ -501,15 +498,34 @@ fn main() {
     ]);
 
     ball_painter.binder_mut().add_uniform(
-        uniform_name_location_mapping[LIGHT_UNIFORM],
-        Box::new(light_direction.as_ref().clone())
+        0, Box::new(camera.perspective_matrix().as_ref().clone())
     );
+    ball_painter.binder_mut().add_uniform(
+        1, Box::new(camera.view_matrix().as_ref().clone())
+    );
+    ball_painter.binder_mut().add_uniform(
+        2, Box::new(light_direction.as_ref().clone())
+    );
+    ball_painter.binder().bind_uniforms();
+
+    labyrinth_painter.binder_mut().add_uniform(
+        0, Box::new(camera.perspective_matrix().as_ref().clone())
+    );
+    labyrinth_painter.binder_mut().add_uniform(
+        1, Box::new(camera.view_matrix().as_ref().clone())
+    );
+    labyrinth_painter.binder().bind_uniforms();
 
     gl_assert_no_err!();
     unsafe { gl::Enable(gl::DEPTH_TEST); }
     gl_assert_no_err!();
 
     let mut mouse_pos: Option<PhysicalPosition<f64>> = None;
+
+    let mut blast_disp_time = std::time::Instant::now();
+    let mut last_mouse_input = std::time::Instant::now();
+
+    // todo: make mouse cursor stick to middle of the screen.
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -520,21 +536,26 @@ fn main() {
                 match event {
                     WindowEvent::CursorMoved { position, .. } => {
                         if let Some(old_pos) = mouse_pos {
-                            let x_diff = (old_pos.x - position.x).abs();
-                            let y_diff = (old_pos.y - position.y).abs();
-                            camera.fixed_rotate_right();
-                            //camera.rotate(x_diff as f32 / 0.01, y_diff as f32 / 0.01);
+                            if last_mouse_input + Duration::from_millis(33) < Instant::now() {
+                                last_mouse_input = Instant::now();
+                                let x_diff = old_pos.x - position.x;
+                                let y_diff = old_pos.y - position.y;
+                                mouse_pos = Some(position);
+                                // camera.fixed_rotate_right();
+
+                                camera.rotate( (y_diff as f32).to_radians(), (x_diff as f32).to_radians());
+                                ball_painter.binder_mut().update_uniform(
+                                    uniform_name_location_mapping[VIEW_UNIFORM],
+                                    Box::new(camera.view_matrix().as_ref().clone()),
+                                );
+                                labyrinth_painter.binder_mut().update_uniform(
+                                    uniform_name_location_mapping[VIEW_UNIFORM],
+                                    Box::new(camera.view_matrix().as_ref().clone()),
+                                );
+                            }
                         } else {
                             mouse_pos = Some(position);
                         }
-                        // ball_painter.binder_mut().update_uniform(
-                        //     uniform_name_location_mapping[VIEW_UNIFORM],
-                        //     Box::new(camera.view_matrix().as_ref().clone())
-                        // );
-                        // labyrinth_painter.binder_mut().update_uniform(
-                        //     uniform_name_location_mapping[VIEW_UNIFORM],
-                        //     Box::new(camera.view_matrix().as_ref().clone())
-                        // );
                     }
                     WindowEvent::KeyboardInput { input, .. } => {
                         if let Some(keycode) = input.virtual_keycode {
@@ -542,19 +563,17 @@ fn main() {
                                 VirtualKeyCode::A => camera.move_(Directions::LEFT * 0.01),
                                 VirtualKeyCode::D => camera.move_(Directions::RIGHT * 0.01),
                                 VirtualKeyCode::Q => camera.move_(Directions::UP * 0.01),
-                                VirtualKeyCode::Z => camera.move_(Directions::DOWN),
-                                VirtualKeyCode::W => camera.move_(Directions::FRONT),
-                                VirtualKeyCode::S => camera.move_(Directions::BACK),
+                                VirtualKeyCode::Z => camera.move_(Directions::DOWN * 0.01),
+                                VirtualKeyCode::W => camera.move_(Directions::FRONT * 0.01),
+                                VirtualKeyCode::S => camera.move_(Directions::BACK * 0.01),
                                 _ => (),
                             };
-                            // ball_painter.binder_mut().update_uniform(
-                            // uniform_name_location_mapping[VIEW_UNIFORM],
-                            // Box::new(camera.view_matrix().as_ref().clone())
-                            // );
-                            // labyrinth_painter.binder_mut().update_uniform(
-                            //     uniform_name_location_mapping[VIEW_UNIFORM],
-                            //     Box::new(camera.view_matrix().as_ref().clone())
-                            // );
+                            ball_painter.binder_mut().update_uniform(
+                                1, Box::new(camera.view_matrix().as_ref().clone())
+                            );
+                            labyrinth_painter.binder_mut().update_uniform(
+                                1, Box::new(camera.view_matrix().as_ref().clone())
+                            );
                         }
                     }
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
@@ -570,9 +589,13 @@ fn main() {
             }
             _ => (),
         }
+        if blast_disp_time + Duration::from_millis(500) < Instant::now() {
+            blast_disp_time = Instant::now();
+            println!("Camera position: ({}, {}, {})", camera.view_matrix()[12], camera.view_matrix()[13], camera.view_matrix()[14]);
+        }
 
         unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); }
-        // labyrinth_painter.draw();
+        labyrinth_painter.draw();
         ball_painter.draw();
         gl_context.swap_buffers().unwrap();
     });

@@ -18,7 +18,7 @@ impl Camera {
     const DEFAULT_Z_FAR: f32 = 100.0;
 
     pub fn angle() -> f32 {
-        f32::to_radians(0.5)
+        f32::to_radians(10f32)
     }
 
     pub fn rotate(&mut self, x_rot: f32, y_rot: f32) {
@@ -43,7 +43,8 @@ impl Camera {
     }
 
     pub fn view_matrix(&self) -> glm::Mat4 {
-        glm::look_at(&self.position, &self.looking_direction, &Directions::UP)
+        let looking_point = self.position + self.looking_direction;
+        glm::look_at(&self.position, &looking_point, &Directions::UP)
     }
 
     pub fn perspective_matrix(&self) -> glm::Mat4 {
@@ -77,7 +78,7 @@ impl Default for Camera {
 
         Self::new(
             Directions::BACK,
-            glm::vec3(4f32, 0f32, 0f32),
+            glm::vec3(0f32, 0f32, 1f32),
             width as f32 / height as f32,
             Self::DEFAULT_FOVY.to_radians(),
             Self::DEFAULT_Z_NEAR,
