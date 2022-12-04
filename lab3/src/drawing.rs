@@ -3,7 +3,7 @@ use crate::gl_assert_no_err;
 use crate::index_buffer::IndexType;
 
 /// Opengl primitive draw mode enumeration.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DrawMode {
     Triangles,
     TriangleStrip,

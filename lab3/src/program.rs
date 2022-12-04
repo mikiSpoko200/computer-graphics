@@ -113,6 +113,10 @@ impl Program {
         Self::new(&v_shader, &f_shader)
     }
 
+    pub fn id(&self) -> gl::types::GLuint {
+        self.id
+    }
+
     pub fn from_shaders(shaders: &[&Shader]) -> Result<Program, String> {
         let program_id = unsafe { gl::CreateProgram() };
 

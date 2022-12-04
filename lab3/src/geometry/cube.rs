@@ -1,38 +1,47 @@
-use alloc::rc::Rc;
-use crate::{attributes, Binder};
-use crate::index_buffer::{IndexBufferObject};
-use crate::program::Program;
+use crate::{binder, vertex, program, index_buffer, uniform, attributes};
+
+use program::Program;
+use index_buffer::IndexBufferObject;
+use binder::Binder;
+use uniform::NamedUniform;
 
 
-pub fn cube() -> Binder<IndexBufferObject<u8>> {
+pub fn cube(uniforms: impl Iterator<Item=NamedUniform>) -> Binder<IndexBufferObject<u8>> {
     let vertices = attributes!(
-         (-1.0, -1.0, -1.0), // 0
-         (-1.0, -1.0,  1.0), // 1
-         (-1.0,  1.0, -1.0), // 2
-         (-1.0,  1.0,  1.0), // 3
-         ( 1.0, -1.0, -1.0), // 4
-         ( 1.0, -1.0,  1.0), // 5
-         ( 1.0,  1.0, -1.0), // 6
-         ( 1.0,  1.0,  1.0f32), // 7
+         (-1.0, -1.0, -1.0),    // 000
+         (-1.0, -1.0,  1.0),    // 001
+         (-1.0,  1.0, -1.0),    // 010
+         (-1.0,  1.0,  1.0),    // 011
+         ( 1.0, -1.0, -1.0),    // 100
+         ( 1.0, -1.0,  1.0),    // 101
+         ( 1.0,  1.0, -1.0),    // 110
+         ( 1.0,  1.0,  1.0f32), // 111
     );
 
     let colors = attributes!(
-        (1.0, 0.0, 0.0),
-        (0.0, 0.0, 0.0),
-        (1.0, 1.0, 0.0),
-        (0.0, 1.0, 0.0),
-        (1.0, 0.0, 1.0),
-        (0.0, 1.0, 1.0),
-        (1.0, 1.0, 1.0),
-        (0.0, 1.0, 1.0f32),
+        (0.1, 0.1, 0.1),
+        (0.1, 0.1, 0.1),
+        (0.0, 0.4, 0.73),
+        (0.0, 0.4, 0.73),
+        (0.1, 0.1, 0.1),
+        (0.1, 0.1, 0.1),
+        (0.0, 0.4, 0.73),
+        (0.0, 0.4, 0.73f32),
     );
 
     let indices = Box::new([
-        3, 7, 1,
-        5, 4, 7,
-        6, 3, 2,
-        1, 0, 4,
-        2, 6
+        0, 1, 5,
+        0, 5, 4,
+        0, 1, 3,
+        0, 3, 2,
+        0, 4, 6,
+        0, 6, 2,
+        1, 5, 7,
+        1, 7, 3,
+        5, 6, 4,
+        5, 7, 6,
+        7, 3, 2,
+        2, 7, 6
     ]);
 
     let index_buf = IndexBufferObject::create(indices);
@@ -45,7 +54,7 @@ pub fn cube() -> Binder<IndexBufferObject<u8>> {
         vec!(Box::new(vertices), Box::new(colors)),
         Some(index_buf),
         program,
-        vec!()
+        uniforms
     );
     binder.upload();
     binder
