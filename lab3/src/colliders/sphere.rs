@@ -6,6 +6,10 @@ pub struct Sphere {
 }
 
 impl Sphere {
+    pub fn new(center: glm::Vec3, r: f32) -> Self {
+        Self { center, r }
+    }
+
     pub fn center(&self) -> &glm::Vec3 {
         &self.center
     }

@@ -26,7 +26,9 @@ use glutin::event_loop::{EventLoop, ControlFlow};
 use glutin::window::{WindowBuilder};
 use glutin::{Api, GlRequest};
 use glutin::dpi::PhysicalPosition;
+use nalgebra_glm::Mat4;
 use crate::camera::{CameraPerspectiveState, CameraViewState, FixedMovable, FreeRoamingCamera, KinematicCamera, PerspectiveMatrixProvider, Rotatable, ViewMatrixProvider};
+use crate::colliders::capsule::Collider;
 
 // todo: Objects can emit painters which borrow data from them during upload.
 //  data must be interpretable as &[VertexAttribute], &[IndexingPrimitive] and perhaps uniforms and programs.
@@ -128,6 +130,26 @@ fn center_cursor(window: &glutin::window::Window) {
     window.set_cursor_position(center).unwrap();
 }
 
+fn temp_instance_offset(instance_id: u32, grid_size: f32) -> glm::Vec3 {
+    let cell_count = grid_size as u32;
+    let x = (instance_id % cell_count) as f32 / grid_size;
+    let y = ((instance_id / cell_count) % cell_count) as f32 / grid_size;
+    let z = ((instance_id / (cell_count * cell_count)) % cell_count) as f32 / grid_size;
+    let grid_center = 2.0 * glm::vec3(x, y, z) - glm::vec3(1.0, 1.0, 1.0) + glm::vec3(1.0, 1.0, 1.0) / grid_size;
+    grid_center
+}
+
+fn rotation_matrix(axis: glm::Vec3, angle: f32) -> Mat4 {
+    let axis = axis.normalize();
+    let s = angle.sin();
+    let c = angle.cos();
+    let oc = 1.0 - c;
+    Mat4::new(oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,  0.0,
+                oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,  0.0,
+                oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c,           0.0,
+                0.0,                                0.0,                                0.0,                                1.0)
+}
+
 fn main() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().with_title("3D labyrinth");
@@ -161,12 +183,20 @@ fn main() {
     let labyrinth_grid_size = 5;
     let light_direction = Directions::DOWN + Directions::RIGHT + Directions::FRONT;
 
+    let mut traingle_color = glm::vec3(0.0, 1.0, 0.0);
+
     const PERSPECTIVE_MATRIX_ID: &str = "perspective_matrix";
     const VIEW_MATRIX_ID: &str = "view_matrix";
     const LIGHT_DIRECTION_ID: &str = "light_direction";
     const PLAYER_POSITION_ID: &str = "player_position";
     const GRID_SIZE_ID: &str = "grid_size";
+    const COLOR_ID: &str = "color";
 
+    let mut test_triangle_uniforms = uniform::to_owned([
+        (PERSPECTIVE_MATRIX_ID, free_roam_cam.perspective_matrix()),
+        (VIEW_MATRIX_ID, free_roam_cam.view_matrix()),
+    ]).collect::<Vec<_>>();
+    test_triangle_uniforms.push((COLOR_ID, Box::new(traingle_color.as_ref().clone())));
     let mut labyrinth_uniforms = uniform::to_owned([
         (PERSPECTIVE_MATRIX_ID, free_roam_cam.perspective_matrix()),
         (VIEW_MATRIX_ID, free_roam_cam.view_matrix()),
@@ -183,17 +213,62 @@ fn main() {
     sphere_uniforms.push((PLAYER_POSITION_ID, Box::new(free_roam_cam.get_position().as_ref().clone())));
     labyrinth_uniforms.push((GRID_SIZE_ID, Box::new(labyrinth_grid_size as f32) as _));
 
-    let mut labyrinth_painter = Painter::new(geometry::labyrinth(labyrinth_uniforms.into_iter(), labyrinth_grid_size), DrawMode::Triangles)
+
+    let mut test_triangle = Painter::new(geometry::basic_triangle(test_triangle_uniforms.into_iter()), DrawMode::Triangles);
+    let test_triangle_model = geometry::test_triangle_model();
+
+    // let (test_sphere, _, _) = geometry::sp(0.1, 20);
+    //
+    // let collider_spheres = [
+    //
+    // ]
+
+    let (lab_binder, rotations) = geometry::labyrinth(labyrinth_uniforms.into_iter(), labyrinth_grid_size);
+
+    let mut triangles: Vec<_> = (0..labyrinth_grid_size * labyrinth_grid_size * labyrinth_grid_size)
+        .into_iter()
+        .map(|index| {
+            let mut triangle = Vec::new();
+            let offset = temp_instance_offset(index as _, labyrinth_grid_size as _);
+            for t in test_triangle_model.clone() {
+                triangle.push(t + offset);
+            }
+            triangle
+        }
+    ).collect();
+
+    let axis = [
+        glm::vec3(1.0, 0.0, 0.0),
+        glm::vec3(0.0, 1.0, 0.0),
+        glm::vec3(0.0, 0.0, 1.0)
+    ]
+
+    let mut colliders = Vec::<[colliders::capsule::Capsule; 3]>::new();
+    for (rotation, mut triangle) in rotations.iter().zip(triangles) {
+        for (index, mut vertex_pos) in triangle.iter_mut().enumerate() {
+            vertex_pos *= rotation_matrix(axis[index], rotation);
+        }
+        let triangle_colliders = [
+            colliders::capsule::Capsule::new(test_triangle_model[0], test_triangle_model[1], 0.1),
+            colliders::capsule::Capsule::new(test_triangle_model[1], test_triangle_model[2], 0.1),
+            colliders::capsule::Capsule::new(test_triangle_model[2], test_triangle_model[0], 0.1),
+        ];
+    }
+
+
+    let mut labyrinth_painter = Painter::new(lab_binder, DrawMode::Triangles)
         .instanced(labyrinth_grid_size * labyrinth_grid_size * labyrinth_grid_size);
     let mut skybox_painter = Painter::new(geometry::cube(skybox_uniforms), DrawMode::Triangles);
     let mut sphere_painter = Painter::new(geometry::sphere(sphere_uniforms.into_iter()), DrawMode::Triangles);
 
     gl_assert_no_err!();
-    unsafe { gl::Enable(gl::DEPTH_TEST); }
+    unsafe {
+        gl::Enable(gl::DEPTH_TEST);
+        // gl::Enable(gl::CULL_FACE);
+    }
     gl_assert_no_err!();
 
     let mut frame_rate_display = Instant::now();
-    let mut use_free_roaming_camera = true;
     let mut draw_mode = DrawMode::Triangles;
 
     const FREE_ROAM_CAM: usize = 0;
@@ -218,6 +293,12 @@ fn main() {
                     DeviceEvent::MouseMotion { delta: (y_delta, x_delta) } => {
                         let current_camera: &mut dyn KinematicCamera = if current_cam == FREE_ROAM_CAM { &mut free_roam_cam } else { &mut hero_cam };
                         current_camera.rotate( (x_delta as f32).to_radians(), (-y_delta as f32).to_radians());
+                        test_triangle.binder_mut().update_uniform(
+                            "view_matrix", Box::new(current_camera.view_matrix().as_ref().clone()),
+                        );
+                        test_triangle.binder_mut().update_uniform(
+                            "view_matrix", Box::new(current_camera.view_matrix().as_ref().clone()),
+                        );
                         skybox_painter.binder_mut().update_uniform(
                             "view_matrix", Box::new(current_camera.view_matrix().as_ref().clone()),
                         );
@@ -256,6 +337,23 @@ fn main() {
                         };
                         {
                             let pos = free_roam_cam.get_position().as_ref().clone();
+                            let center = free_roam_cam.get_position();
+                            let collider_sphere = colliders::sphere::Sphere::new(center, 0.1);
+                            let mut collision_detected = false;
+                            for collider in &triangle_colliders {
+                                if collider.do_collide(&collider_sphere) {
+                                    collision_detected = true;
+                                    test_triangle.binder_mut().update_uniform(
+                                        COLOR_ID, Box::new([1.0, 0.0, 0.0]),
+                                    );
+                                }
+                            }
+                            if !collision_detected {
+                                test_triangle.binder_mut().update_uniform(
+                                    COLOR_ID, Box::new([0.0, 1.0, 0.0]),
+                                );
+                            }
+
                             let current_camera: &mut dyn KinematicCamera = if current_cam == FREE_ROAM_CAM { &mut free_roam_cam } else { &mut hero_cam };
                             skybox_painter.binder_mut().update_uniform(
                                 "view_matrix", Box::new(current_camera.view_matrix().as_ref().clone()),
@@ -297,8 +395,9 @@ fn main() {
 
         labyrinth_painter.update_draw_mode(draw_mode);
         sphere_painter.update_draw_mode(draw_mode);
+        test_triangle.draw();
 
-        labyrinth_painter.draw();
+        //labyrinth_painter.draw();
         if current_cam != FREE_ROAM_CAM {
             sphere_painter.draw();
         }

@@ -1,2 +1,2 @@
-mod sphere;
-mod capsule;
+pub(crate) mod sphere;
+pub(crate) mod capsule;

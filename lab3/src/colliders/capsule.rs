@@ -43,6 +43,10 @@ pub struct Capsule {
 }
 
 impl Capsule {
+    pub fn new(a: glm::Vec3, b: glm::Vec3, r: f32) -> Self {
+        Self { a, b, r }
+    }
+
     pub fn spanning_segment(&self) -> Segment {
         Segment { p1: self.a, p2: self.b }
     }
