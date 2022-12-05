@@ -6,9 +6,21 @@ pub type NamedUniform = (&'static str, Box<dyn TypedUniform>);
 
 pub enum UniformType {
     Float,
-    Vec3,
     Vec2,
+    Vec3,
     Mat4,
+}
+
+pub fn to_owned<U, T, I>(uniforms: I) -> impl Iterator<Item=(&'static str, Box<dyn TypedUniform>)>
+where
+    U: 'static + TypedUniform + Clone,
+    T: AsRef<U>,
+    I: IntoIterator<Item=(&'static str, T)>
+{
+    uniforms.into_iter()
+        .map(|(ident, uniform)| {
+            (ident, Box::new(uniform.as_ref().clone()) as _)
+        })
 }
 
 pub trait UniformTypeProvider {

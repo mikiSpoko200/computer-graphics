@@ -4,32 +4,29 @@ mod program;
 mod uniform;
 mod camera;
 mod index_buffer;
-mod consts;
 mod drawing;
 mod binder;
 mod painter;
+mod colliders;
 
 use glutin;
 use gl;
 use nalgebra_glm as glm;
 
-use std::rc::Rc;
 use std::io::{Write};
-use std::collections::HashMap;
 use std::default::Default;
 use std::time::{Duration, Instant};
 
-use uniform::Uniform;
 use drawing::DrawMode;
 use camera::Camera;
 use painter::Painter;
 
-use glutin::event::{Event, VirtualKeyCode, WindowEvent};
+use glutin::event::{DeviceEvent, ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use glutin::event_loop::{EventLoop, ControlFlow};
 use glutin::window::{WindowBuilder};
 use glutin::{Api, GlRequest};
 use glutin::dpi::PhysicalPosition;
-use crate::uniform::TypedUniform;
+use crate::camera::{CameraPerspectiveState, CameraViewState, FixedMovable, FreeRoamingCamera, KinematicCamera, PerspectiveMatrixProvider, Rotatable, ViewMatrixProvider};
 
 // todo: Objects can emit painters which borrow data from them during upload.
 //  data must be interpretable as &[VertexAttribute], &[IndexingPrimitive] and perhaps uniforms and programs.
@@ -131,7 +128,6 @@ fn center_cursor(window: &glutin::window::Window) {
     window.set_cursor_position(center).unwrap();
 }
 
-// todo: update frame rate in the terminal in place.
 fn main() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().with_title("3D labyrinth");
@@ -157,134 +153,129 @@ fn main() {
     // let size = gl_context.window().inner_size();
     // gl_context.(size);
 
-    let mut camera = Camera::default();
+    let perspective = CameraPerspectiveState::default();
+    let view = CameraViewState::default();
+    let mut free_roam_cam = FreeRoamingCamera::from(Camera::new(perspective.clone(), view));
+    let mut hero_cam = camera::HeroShotCamera::new(perspective, Directions::FRONT, CoordinateSystem::CENTER, 4.0);
+
     let labyrinth_grid_size = 5;
     let light_direction = Directions::DOWN + Directions::RIGHT + Directions::FRONT;
 
-    let labyrinth_uniforms = [
-        ("perspective_matrix", Box::new(camera.perspective_matrix().as_ref().clone()) as _),
-        ("view_matrix", Box::new(camera.view_matrix().as_ref().clone()) as _),
-    ].into_iter();
-    let skybox_uniforms = [
-        ("perspective_matrix", Box::new(camera.perspective_matrix().as_ref().clone()) as _),
-        ("view_matrix", Box::new(camera.view_matrix().as_ref().clone()) as _),
-    ].into_iter();
-    let sphere_uniforms = [
-        ("perspective_matrix", Box::new(camera.perspective_matrix().as_ref().clone()) as _),
-        ("view_matrix", Box::new(camera.view_matrix().as_ref().clone()) as _),
-        ("light_direction", Box::new(light_direction.as_ref().clone()) as _)
-    ].into_iter();
+    const PERSPECTIVE_MATRIX_ID: &str = "perspective_matrix";
+    const VIEW_MATRIX_ID: &str = "view_matrix";
+    const LIGHT_DIRECTION_ID: &str = "light_direction";
+    const PLAYER_POSITION_ID: &str = "player_position";
+    const GRID_SIZE_ID: &str = "grid_size";
 
-    let mut labyrinth_painter = Painter::new(geometry::labyrinth(labyrinth_uniforms, labyrinth_grid_size), DrawMode::Triangles)
+    let mut labyrinth_uniforms = uniform::to_owned([
+        (PERSPECTIVE_MATRIX_ID, free_roam_cam.perspective_matrix()),
+        (VIEW_MATRIX_ID, free_roam_cam.view_matrix()),
+    ]).collect::<Vec<_>>();
+    let skybox_uniforms = uniform::to_owned([
+        (PERSPECTIVE_MATRIX_ID, free_roam_cam.perspective_matrix()),
+        (VIEW_MATRIX_ID, free_roam_cam.view_matrix()),
+    ]);
+    let mut sphere_uniforms = uniform::to_owned([
+        (PERSPECTIVE_MATRIX_ID, free_roam_cam.perspective_matrix()),
+        (VIEW_MATRIX_ID, free_roam_cam.view_matrix()),
+    ]).collect::<Vec<_>>();
+    sphere_uniforms.push((LIGHT_DIRECTION_ID, Box::new(light_direction.as_ref().clone())));
+    sphere_uniforms.push((PLAYER_POSITION_ID, Box::new(free_roam_cam.get_position().as_ref().clone())));
+    labyrinth_uniforms.push((GRID_SIZE_ID, Box::new(labyrinth_grid_size as f32) as _));
+
+    let mut labyrinth_painter = Painter::new(geometry::labyrinth(labyrinth_uniforms.into_iter(), labyrinth_grid_size), DrawMode::Triangles)
         .instanced(labyrinth_grid_size * labyrinth_grid_size * labyrinth_grid_size);
     let mut skybox_painter = Painter::new(geometry::cube(skybox_uniforms), DrawMode::Triangles);
-    let mut sphere_painter = Painter::new(geometry::sphere(sphere_uniforms), DrawMode::Triangles);
-
-    // todo: should all painters get perspective and view matrices?
-
-    const PERSPECTIVE_UNIFORM: &str = "perspective";
-    const VIEW_UNIFORM: &str = "view";
-    const LIGHT_UNIFORM: &str = "light";
-
-    let uniform_name_location_mapping = HashMap::from([
-        (PERSPECTIVE_UNIFORM, 0),
-        (VIEW_UNIFORM, 1),
-        (LIGHT_UNIFORM, 2),
-    ]);
+    let mut sphere_painter = Painter::new(geometry::sphere(sphere_uniforms.into_iter()), DrawMode::Triangles);
 
     gl_assert_no_err!();
     unsafe { gl::Enable(gl::DEPTH_TEST); }
     gl_assert_no_err!();
 
-    let mut mouse_pos: Option<PhysicalPosition<f64>> = None;
-
     let mut frame_rate_display = Instant::now();
-    let mut last_mouse_input = Instant::now();
+    let mut use_free_roaming_camera = true;
+    let mut draw_mode = DrawMode::Triangles;
 
-    // todo: make mouse cursor stick to middle of the screen.
-
-    let mut show_cursor = false;
-    let screen_center = |window: &glutin::window::Window| {
-        let size = window.inner_size();
-        PhysicalPosition::new(size.width / 2, size.height / 2)
-    };
-
-    let mut draw_mode = drawing::DrawMode::Triangles;
-    let mut key_counter = 0;
+    const FREE_ROAM_CAM: usize = 0;
+    const HERO_CAM: usize = 1;
+    let mut current_cam = FREE_ROAM_CAM;
 
     let mut fps_counter = 0;
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
-
         // todo: for smoother movement and better frame rates process all inputs once per each frame.
+
         match event {
             Event::LoopDestroyed => (),
             Event::WindowEvent { event, .. } => {
                 match event {
-                    WindowEvent::CursorMoved { position, .. } => {
-                        if let Some(old_pos) = mouse_pos {
-                            if last_mouse_input + Duration::from_millis(16) < Instant::now() {
-                                last_mouse_input = Instant::now();
-                                let x_diff = old_pos.x - position.x;
-                                let y_diff = old_pos.y - position.y;
-                                mouse_pos = Some(position);
-
-                                camera.rotate( (y_diff as f32).to_radians(), (x_diff as f32).to_radians());
-                                skybox_painter.binder_mut().update_uniform(
-                                    "view_matrix", Box::new(camera.view_matrix().as_ref().clone()),
-                                );
-                                sphere_painter.binder_mut().update_uniform(
-                                    "view_matrix", Box::new(camera.view_matrix().as_ref().clone()),
-                                );
-                                labyrinth_painter.binder_mut().update_uniform(
-                                    "view_matrix", Box::new(camera.view_matrix().as_ref().clone()),
-                                );
-                            }
-                        } else {
-                            mouse_pos = Some(position);
-                        }
-                    }
-                    WindowEvent::KeyboardInput { input, .. } => {
-                        if let Some(keycode) = input.virtual_keycode {
-                            match keycode {
-                                VirtualKeyCode::A => camera.r#move(&Direction::Left),
-                                VirtualKeyCode::D => camera.r#move(&Direction::Right),
-                                VirtualKeyCode::Q => camera.r#move(&Direction::Up),
-                                VirtualKeyCode::Z => camera.r#move(&Direction::Down),
-                                VirtualKeyCode::W => camera.r#move(&Direction::Front),
-                                VirtualKeyCode::C => {
-                                    key_counter += 1;
-                                    if key_counter % 2 == 1 {
-                                        if draw_mode == drawing::DrawMode::Triangles {
-                                            draw_mode = drawing::DrawMode::LineLoop;
-                                        } else {
-                                            draw_mode = drawing::DrawMode::Triangles;
-                                        }
-                                    }
-                                }
-
-                                VirtualKeyCode::S => camera.r#move(&Direction::Back),
-                                VirtualKeyCode::Escape => {
-                                    show_cursor = !show_cursor;
-                                    gl_context.window().set_cursor_visible(show_cursor)
-                                },
-                                _ => (),
-                            };
-                            skybox_painter.binder_mut().update_uniform(
-                                "view_matrix", Box::new(camera.view_matrix().as_ref().clone()),
-                            );
-                            sphere_painter.binder_mut().update_uniform(
-                                "view_matrix", Box::new(camera.view_matrix().as_ref().clone()),
-                            );
-                            labyrinth_painter.binder_mut().update_uniform(
-                                "view_matrix", Box::new(camera.view_matrix().as_ref().clone()),
-                            );
-                        }
-                    }
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                     _ => (),
                 }
             },
+            Event::DeviceEvent { event, .. } => {
+                match event {
+                    DeviceEvent::MouseMotion { delta: (y_delta, x_delta) } => {
+                        let current_camera: &mut dyn KinematicCamera = if current_cam == FREE_ROAM_CAM { &mut free_roam_cam } else { &mut hero_cam };
+                        current_camera.rotate( (x_delta as f32).to_radians(), (-y_delta as f32).to_radians());
+                        skybox_painter.binder_mut().update_uniform(
+                            "view_matrix", Box::new(current_camera.view_matrix().as_ref().clone()),
+                        );
+                        sphere_painter.binder_mut().update_uniform(
+                            "view_matrix", Box::new(current_camera.view_matrix().as_ref().clone()),
+                        );
+                        labyrinth_painter.binder_mut().update_uniform(
+                            "view_matrix", Box::new(current_camera.view_matrix().as_ref().clone()),
+                        );
+                    }
+                    DeviceEvent::Key(KeyboardInput{ state: ElementState::Pressed, virtual_keycode: Some(key_code), .. }) => {
+                        match key_code {
+                            VirtualKeyCode::A => free_roam_cam.fixed_move(&Direction::Left),
+                            VirtualKeyCode::D => free_roam_cam.fixed_move(&Direction::Right),
+                            VirtualKeyCode::Q => free_roam_cam.fixed_move(&Direction::Up),
+                            VirtualKeyCode::Z => free_roam_cam.fixed_move(&Direction::Down),
+                            VirtualKeyCode::W => free_roam_cam.fixed_move(&Direction::Front),
+                            VirtualKeyCode::S => free_roam_cam.fixed_move(&Direction::Back),
+                            VirtualKeyCode::L => hero_cam.fixed_move(&Direction::Front),
+                            VirtualKeyCode::K => hero_cam.fixed_move(&Direction::Back),
+                            VirtualKeyCode::C => {
+                                if draw_mode == DrawMode::Triangles {
+                                    draw_mode = DrawMode::LineLoop;
+                                } else {
+                                    draw_mode = DrawMode::Triangles;
+                                }
+                            }
+                            VirtualKeyCode::Escape => {
+                                if current_cam == FREE_ROAM_CAM {
+                                    current_cam = HERO_CAM;
+                                } else {
+                                    current_cam = FREE_ROAM_CAM;
+                                }
+                            },
+                            _ => (),
+                        };
+                        {
+                            let pos = free_roam_cam.get_position().as_ref().clone();
+                            let current_camera: &mut dyn KinematicCamera = if current_cam == FREE_ROAM_CAM { &mut free_roam_cam } else { &mut hero_cam };
+                            skybox_painter.binder_mut().update_uniform(
+                                "view_matrix", Box::new(current_camera.view_matrix().as_ref().clone()),
+                            );
+                            sphere_painter.binder_mut().update_uniform(
+                                "view_matrix", Box::new(current_camera.view_matrix().as_ref().clone()),
+                            );
+                            sphere_painter.binder_mut().update_uniform(
+                                PLAYER_POSITION_ID, Box::new(pos)
+                            );
+                            labyrinth_painter.binder_mut().update_uniform(
+                                "view_matrix", Box::new(current_camera.view_matrix().as_ref().clone()),
+                            );
+
+                        }
+
+                    }
+                    _ => (),
+                }
+            }
             Event::RedrawRequested(_) => {
                 unsafe {
                     gl::ClearColor(Scene::LIGHT_BLUE.x, Scene::DARK_GRAY.y, Scene::LIGHT_BLUE.z, 1.0);
@@ -303,12 +294,14 @@ fn main() {
         }
 
         unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); }
+
         labyrinth_painter.update_draw_mode(draw_mode);
         sphere_painter.update_draw_mode(draw_mode);
-        skybox_painter.update_draw_mode(draw_mode);
 
         labyrinth_painter.draw();
-        sphere_painter.draw();
+        if current_cam != FREE_ROAM_CAM {
+            sphere_painter.draw();
+        }
         skybox_painter.draw();
         gl_context.swap_buffers().unwrap();
     });

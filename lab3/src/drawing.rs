@@ -64,7 +64,7 @@ pub mod instanced {
             gl::DrawArraysInstanced(
                 draw_mode.get(),
                 0,
-                vertex_count as _,
+                3 as _, // vertex_count as
                 instance_count as _,
             );
         }
