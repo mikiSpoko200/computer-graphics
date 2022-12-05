@@ -6,17 +6,11 @@ pub trait Collider<C> {
 }
 
 // blanket impl similar to From / Into
-impl<T, C: Collider<T>> Collider<C> for T {
-    fn do_collide(&self, other: &C) -> bool {
-        other.do_collide(self)
-    }
-}
-
-pub struct Capsule {
-    a: glm::Vec3,
-    b: glm::Vec3,
-    r: f32,
-}
+// impl<T, C: Collider<T>> Collider<C> for T {
+//     fn do_collide(&self, other: &C) -> bool {
+//         other.do_collide(self)
+//     }
+// }
 
 pub struct Segment {
     pub p1: glm::Vec3,
@@ -42,12 +36,23 @@ fn distance_squared(s: &Segment, p: &glm::Vec3) -> f32 {
     p_p1.norm_squared() - spanning_proj * spanning_proj / sv_length_squared
 }
 
+pub struct Capsule {
+    a: glm::Vec3,
+    b: glm::Vec3,
+    r: f32,
+}
+
+impl Capsule {
+    pub fn spanning_segment(&self) -> Segment {
+        Segment { p1: self.a, p2: self.b }
+    }
+}
+
+// todo: test this
 impl Collider<Sphere> for Capsule {
     fn do_collide(&self, other: &Sphere) -> bool {
-        // Compute (squared) distance between sphere center and capsule line segment
-        float dist2 = SqDistPointSegment(capsule.a, capsule.b, s.c);
-        // If (squared) distance smaller than (squared) sum of radii, they collide
-        float radius = s.r + capsule.r;
-        return dist2 <= radius * radius;
+        let distance_squared = distance_squared(&self.spanning_segment(), other.center());
+        let collision_distance = other.radius() + self.r;
+        distance_squared <= collision_distance * collision_distance
     }
 }
