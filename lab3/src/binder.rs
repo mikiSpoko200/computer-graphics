@@ -115,8 +115,10 @@ impl<I> Binder<I> where I: IndexBuffer,
         // vertex count provider trait
         if let Some(ref index_buffer) = self.ebo {
             index_buffer.vertex_count()
+        } else if let Some(vbo) = self.vbos.first() {
+            vbo.as_ref().vertex_count()
         } else {
-            self.vbos.first().unwrap().as_ref().vertex_count()
+            2
         }
     }
 

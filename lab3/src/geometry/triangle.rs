@@ -47,7 +47,7 @@ pub fn basic_triangle(uniforms: impl Iterator<Item=NamedUniform>) -> Binder<Inde
     binder
 }
 
-pub fn labyrinth(uniforms: impl Iterator<Item=NamedUniform>, n: usize) -> (Binder<IndexBufferObject>, Vec<(f32, f32, f32)>) {
+pub fn labyrinth(uniforms: impl Iterator<Item=NamedUniform>, n: usize) -> (Binder<IndexBufferObject>, Vec<[f32; 3]>) {
     // let scale = 1.0 / n as f32;
     // let tail_center_offset = glm::vec3(1f32, 1f32, 1f32) / (2.0 * n as f32);
 
@@ -55,8 +55,10 @@ pub fn labyrinth(uniforms: impl Iterator<Item=NamedUniform>, n: usize) -> (Binde
     let distrib = rand::distributions::Uniform::new(0.0, std::f32::consts::PI * 2.0);
     let rotations = (0..(n * n * n))
         .into_iter()
-        .map(|_| (distrib.sample(&mut rng), distrib.sample(&mut rng), distrib.sample(&mut rng)))
+        .map(|_| [distrib.sample(&mut rng), distrib.sample(&mut rng), distrib.sample(&mut rng)])
         .collect::<Vec<_>>();
+
+    // let rotations = vec!([0f32; 3]; n * n * n);
 
     let duplicate = rotations.clone();
     let vertex_attrs = rotations.into_iter()

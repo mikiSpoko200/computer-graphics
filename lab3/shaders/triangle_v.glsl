@@ -17,6 +17,6 @@ vec4 to_clip_space(vec4 position) {
 
 void main(void) {
     f_color = vec4(color, 1.0);
-    vec4 world_position = vec4(position, 1.0);
+    vec4 world_position = vec4(position + vec3(3, 0, 0), 1.0);
     gl_Position = to_clip_space(world_position);
 }

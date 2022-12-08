@@ -83,8 +83,9 @@ impl From<Camera> for FreeRoamingCamera {
 
 impl FixedMovable for FreeRoamingCamera {
     fn is_in_bounds(&self) -> bool {
-        let pos = &self.camera.view.position;
-        pos.x > -1.0 && pos.x < 1.0 && pos.y > -1.0 && pos.y < 1.0 && pos.z > -1.0 && pos.z < 1.0
+        // let pos = &self.camera.view.position;
+        // pos.x > -1.0 && pos.x < 1.0 && pos.y > -1.0 && pos.y < 1.0 && pos.z > -1.0 && pos.z < 1.0
+        true
     }
 
     fn fixed_move(&mut self, direction: &Direction) {
