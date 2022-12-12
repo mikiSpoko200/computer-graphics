@@ -1,0 +1,18 @@
+todo:
+
+smoother movement system
+Lighting models
+Spheres with different colors
+Glowing spheres
+
+strzałki -> prawo lewo przód tył
+zoom -> zmiana fov w kamerze za pomocą +/-
+tab -> zmiana kamery z fps na hero shot. W hero shot przednia ściana ma nie być renderowana - raycast?
+
+phong
+światło od obserwatora zależne od odległości
+świecące bąbelki też z zależnością od odległości
+efekt mgły nieidealnie przeźroczystej wody.
+przeźroczystość bąbelków.
+
+wzorki na ścianach -> odbicie ścian w bąbelkach
