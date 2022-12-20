@@ -8,13 +8,14 @@ use uniform::TypedUniform;
 use std::ops::Deref;
 use program::Program;
 use index_buffer::{IndexBuffer, IndexingMode, IndexType};
+use crate::index_buffer::IndexBufferObject;
 use crate::uniform::{UniformType, UniformTypeProvider};
 
 
 // fixme: attribute / uniform layout provider - as of now layouts are specified in order.
 //      quick solution -> print the manifest of (current layout - glsl lifetime - name)?
 
-pub struct Binder<I>
+pub struct Binder<I = IndexBufferObject>
     where
         I: IndexBuffer
 {

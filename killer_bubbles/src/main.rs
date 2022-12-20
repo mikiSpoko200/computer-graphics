@@ -91,8 +91,22 @@ pub trait KinematicCameraGameObject: GameObject + KinematicCamera { }
 /// Abstracts away uniform management from main loop
 #[derive(Debug, Copy, Clone)]
 pub struct Scene<'a> {
-    game_objects: HashMap<&'a str, Vec<Binder<IndexBufferObject>>>,
+    game_objects: HashMap<&'a str, Vec<Binder>>,
     camera: &'a mut dyn KinematicCameraGameObject,
+}
+
+pub struct Sphere {
+    transform: Transform,
+    color: [f32; 3],
+    model: (),
+}
+
+pub fn new_sphere() -> Transform {
+
+}
+
+pub fn spheres(count: usize) -> Binder {
+
 }
 
 impl<'a> Scene<'a> {
@@ -105,7 +119,7 @@ impl<'a> Scene<'a> {
             for binder in components {
                 binder.update_uniform(
                     "view_matrix",
-
+                    self.camera.view_matrix() as _
                 )
             }
         }
@@ -194,6 +208,7 @@ pub trait Drawable {
 }
 
 // object must be places in world
+#[repr(C), derive(Debug, Hash, Eq, PartialEq)]
 pub struct Transform {
     pub position: glm::Vec3,
     pub rotation: glm::Vec3,
@@ -254,7 +269,6 @@ pub trait GameObject: Drawable + ComponentProvider<Transform> { }
 //         let colliders =
 //     }
 // }
-
 
 fn main() {
     let event_loop = EventLoop::new();
