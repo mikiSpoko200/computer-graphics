@@ -4,118 +4,118 @@ use gl::types::GLuint;
 
 use crate::{gl_assert, gl_assert_no_err};
 use crate::index_buffer::{GlBufferTargetProvider};
+use crate::vertex::attribute::{Attribute, VertexFormat};
 
-#[macro_export]
-macro_rules! attributes {
-    () => {
-        []
-    };
-    ($($x:expr),+ $(,)?) => {
-        $crate::vertex::BufferObject::create(
-            vec!($( $crate::vertex::VertexAttribute::from($x)), +).into_boxed_slice()
-        )
-    };
+// note: https://www.khronos.org/opengl/wiki/Debug_Output
+//   article about the debugging capabilities of opengl - integrate message severity with
+//   logging levels and context type with cargo build type (find out if the cfg(debug) is possible)
+
+pub trait GlObjectName {
+    type Name;
+
+    // note: https://www.khronos.org/opengl/wiki/OpenGL_Object/Object_Name
+    //  strings can be associated with system generated object names - use it in debug mode?
+
+    fn name(&self) -> Self::Name;
 }
 
-/// Trait that represents an owner of vertex::Attributes
-pub trait Buffer {
-    fn upload(&self);
+impl GlObjectName for usize {
+    type Name = usize;
 
-    fn id(&self) -> GLuint;
-
-    fn attribute_type(&self) -> AttributeType;
-
-    fn vertex_count(&self) -> usize;
-
-    fn scoped_binder(&self) -> ScopedBinder {
-        gl_assert_no_err!();
-        ScopedBinder::new(self.id())
+    fn name(&self) -> Self::Name {
+        *self
     }
 }
 
-//region BufferObject
-/// Buffer object for packed vertex attributes
-#[derive(Debug)]
-pub struct BufferObject<P: Primitive, const N: usize> {
-    id: GLuint,
-    buffer: Box<[VertexAttribute<P, N>]>,
+todo!(pub unsafe configure_vertex_array_pointer(vertex_format, ));
+
+/// A handle to opengl object that manages it bindings and frees any GPU memory on Drop.
+/// todo: rename
+pub struct Handle {
+    name: usize // Rc<dyn GlObjectName>
 }
 
-impl<P: Primitive, const N: usize> BufferObject<P, N> {
-    pub fn create(buffer: Box<[VertexAttribute<P, N>]>) -> Self {
-        let mut id = 0;
-        unsafe {
-            gl_assert!(gl::CreateBuffers(1, &mut id));
-        }
-        Self { id, buffer }
-    }
+pub struct GlslAttributeContext<'name> {
+    location: usize,
+    name: Option<&'name str>,
+    // some more here: https://www.khronos.org/opengl/wiki/Layout_Qualifier_(GLSL)#Fragment_shader_buffer_output
 }
 
-impl<P: Primitive, const N: usize> From<&[VertexAttribute<P, N>]> for BufferObject<P, N> {
-    fn from(data: &[VertexAttribute<P, N>]) -> Self {
-        let attrs = data.to_owned().into_boxed_slice();
-        Self::create(attrs)
-    }
+pub struct AttributeArray {
+    gl_object: Handle
 }
 
-impl<P: Primitive, const N: usize> GlBufferTargetProvider for BufferObject<P, N> {
-    const TARGET: GLuint = gl::ARRAY_BUFFER;
+// internal data structure that associates attribute with parameters
+pub(crate) struct AttributeConfig<'a> {
+    pub attribute: &'a dyn Source,
+    pub instancing: usize, // info about instancing
+    pub glsl_attribute_context: GlslAttributeContext<'a>
 }
 
-impl<P: Primitive, const N: usize> Buffer for BufferObject<P, N> {
-    fn upload(&self) {
-        gl_assert_no_err!();
-        let byte_count = self.vertex_count() * std::mem::size_of::<VertexAttribute<P, N>>();
-        let raw_ptr = self.buffer.as_ref().as_ptr() as *const std::ffi::c_void;
-        unsafe {
-            gl::BufferData(<Self as GlBufferTargetProvider>::TARGET, byte_count as _, raw_ptr, gl::STATIC_DRAW);
-        }
-        gl_assert_no_err!();
-    }
+// this article is gold!!!
+// note: https://www.khronos.org/opengl/wiki/Vertex_Rendering#Multi-Draw
 
-    fn id(&self) -> GLuint {
-        self.id
-    }
+pub struct VertexBufferBuilder {}
 
-    fn attribute_type(&self) -> AttributeType {
-        VertexAttribute::<P, N>::attribute_type()
-    }
+pub struct VertexBuffer<'attrs> {
+    // note: here comes type erasure for the attribute streams
+    //   all that is needed is already stored in VertexFormat
+    // todo: what about instancing?
+    // fixme: assert(len <  GL_MAX_VERTEX_ATTRIBS)
+    attributes: Box<[AttributeConfig<'attrs>]>
+}
 
-    fn vertex_count(&self) -> usize {
-        self.buffer.len()
+impl<A> From<&[A]> for VertexBuffer<'_> where A: Attribute {
+    fn from(attrs: &[A]) -> Self {
+
+
     }
 }
 
-impl<P: Primitive, const N: usize> Drop for BufferObject<P, N> {
-    fn drop(&mut self) {
-        unsafe {
-            gl::DeleteBuffers(1, &self.id)
-        }
-    }
+impl VertexBuffer<'_> {
+    // todo: move all such consts into lazy_static!
+    const MAX_VERTEX_ATTRIBUTE_COUNT: usize = todo!();
 }
-//endregion
 
-//region ScopedBinder
-pub struct ScopedBinder(GLuint);
+impl TryFrom<&[& dyn Attribute]> for VertexBuffer<'_> {
+    type Error = (); // vertex buffer creation error
 
-impl ScopedBinder {
-    pub fn new(buffer_id: GLuint) -> Self {
-        gl_assert_no_err!();
-        unsafe {
-            gl::BindBuffer(gl::ARRAY_BUFFER, buffer_id);
-        }
-        gl_assert_no_err!();
-        Self(buffer_id)
+    fn try_from(attrs: &[&dyn Attribute]) -> Self {
+        // this may fail when attrs.len() > MAX_VERTEX_ATTRIBUTE_COUNT
+        todo!();
     }
 }
 
-impl Drop for ScopedBinder {
-    fn drop(&mut self) {
-        gl_assert_no_err!();
-        unsafe {
-            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
-        }
-        gl_assert_no_err!();
+
+
+pub struct FrameBuffer {
+
+}
+
+
+
+/// Source of vertex attributes ? what about textures?
+/// todo: rename
+pub trait Source {
+    fn data(&self) -> &[u8];
+
+    fn format(&self) -> VertexFormat;
+}
+
+impl<T, P, const N: usize> Source for T
+where
+    T: AsRef<[P; N]>,
+    P: Primitive
+{
+    fn data(&self) -> &[u8] {
+        // Safety: data layout information is preserved by format.
+        let ([], aligned_bytes, &[]) = unsafe { self.as_ref().align_to::<u8>() } else {
+            panic!("Transmutation of slice into bytes not aligned.")
+        };
+        aligned_bytes
+    }
+
+    fn format(&self) -> VertexFormat {
+        <T as Attribute>::format()
     }
 }
-//endregion

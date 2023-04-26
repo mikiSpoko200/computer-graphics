@@ -89,7 +89,7 @@ impl CoordinateSystem {
 pub trait KinematicCameraGameObject: GameObject + KinematicCamera { }
 
 /// Abstracts away uniform management from main loop
-#[derive(Debug, Copy, Clone)]
+// #[derive(Debug, Clone)]
 pub struct Scene<'a> {
     game_objects: HashMap<&'a str, Vec<Binder>>,
     camera: &'a mut dyn KinematicCameraGameObject,
@@ -133,12 +133,12 @@ impl<'a> Scene<'a> {
         self.camera.rotate(x_rad, y_rad);
     }
 
-    pub fn change_camera(&mut self, new_camera: &mut dyn CameraGameObject) {
+    pub fn change_camera(&mut self, new_camera: &mut dyn KinematicCameraGameObject) {
         self.camera = new_camera;
     }
 }
 
-impl Scene {
+impl Scene<'_> {
     const DARK_GRAY:  glm::Vec3 = glm::Vec3::new(0.23, 0.23, 0.23);
     const LIGHT_BLUE: glm::Vec3 = glm::Vec3::new(0.54, 0.82, 1.0);
 }
@@ -204,11 +204,12 @@ fn rotation_matrix(axis: glm::Vec3, angle: f32) -> Mat4 {
 // object is drawable
 // there's no easy way to know if transforms should be updated.
 pub trait Drawable {
-    fn draw<C: CameraProvider>(&mut self, camera: &C);
+    fn draw(&mut self, camera: &dyn CameraProvider);
 }
 
 // object must be places in world
-#[repr(C), derive(Debug, Hash, Eq, PartialEq)]
+#[repr(C)]
+#[derive(Debug, Hash, Eq, PartialEq)]
 pub struct Transform {
     pub position: glm::Vec3,
     pub rotation: glm::Vec3,
@@ -250,6 +251,14 @@ pub trait ComponentProvider<C: Component> {
     fn component_mut(&mut self) -> &mut C;
 }
 
+#[repr(packed)]
+pub struct NamedTuple<T, A, B>(T, A, B);
+
+pub trait PackedNonHeterogenious {
+    type Array; // [(A, B, C); N]
+
+}
+
 // any world object must be drawable and have and provide world transform component.
 // this implies that at least 5 uniforms are required: (this can be reduced to 3 uniform matrices)
 //   vec3 world_position  |
@@ -260,15 +269,25 @@ pub trait ComponentProvider<C: Component> {
 // transform would interact with all the transformations
 pub trait GameObject: Drawable + ComponentProvider<Transform> { }
 
-// pub struct Labyrinth {
-//     colliders: Vec<Capsule>
-// }
-//
-// impl Labyrinth {
-//     pub fn new(colliders: &[(f32, f32, f32)]) -> Self {
-//         let colliders =
-//     }
-// }
+// targets for bind
+pub enum TextureTarget {
+    _1D = gl::TEXTURE_1D as isize,
+    _2D = gl::TEXTURE_2D as isize,
+    _3D = gl::TEXTURE_3D as isize,
+    _1DArray = gl::TEXTURE_1D_ARRAY as isize,
+    _2DArray = gl::TEXTURE_2D_ARRAY as isize,
+    Rectangle = gl::TEXTURE_RECTANGLE as isize,
+    CubeMap = gl::TEXTURE_CUBE_MAP as isize,
+    CubeMapArray = gl::TEXTURE_CUBE_MAP_ARRAY as isize,
+    Buffer = gl::TEXTURE_BUFFER as isize,
+    _2DMultisample = gl::TEXTURE_2D_MULTISAMPLE as isize,
+    _2DMultisampleArray = gl::TEXTURE_2D_MULTISAMPLE_ARRAY as isizey
+}
+
+// Texture object in opengl lingo
+pub struct Texture {
+    
+}
 
 fn main() {
     let event_loop = EventLoop::new();
