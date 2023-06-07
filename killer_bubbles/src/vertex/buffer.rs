@@ -6,34 +6,92 @@ use crate::{gl_assert, gl_assert_no_err};
 use crate::index_buffer::{GlBufferTargetProvider};
 use crate::vertex::attribute::{Attribute, VertexFormat};
 
-// note: https://www.khronos.org/opengl/wiki/Debug_Output
-//   article about the debugging capabilities of opengl - integrate message severity with
-//   logging levels and context type with cargo build type (find out if the cfg(debug) is possible)
+// note: dual purpose of the VertexAttribPointer - both describes the data AND links the attribute
+//  being configured with shader input.
+//  The glVertexAttribPointer function in OpenGL is used to specify the structure
+//  and layout of vertex attribute data stored in a buffer object.
+//  It tells OpenGL how to interpret the data and how to bind it to a vertex shader attribute.
 
-pub trait GlObjectName {
-    type Name;
+use crate::context::targets::buffer;
+use crate::object;
 
-    // note: https://www.khronos.org/opengl/wiki/OpenGL_Object/Object_Name
-    //  strings can be associated with system generated object names - use it in debug mode?
-
-    fn name(&self) -> Self::Name;
+pub mod types {
+    // note: only vertex attributes need to be self descriptive! i.e targeting GL_ARRAY_BUFFER and these can be:
+    //  > Vertex Attributes in the Vertex Shader can be declared as a floating-point GLSL type (such as float or vec4),
+    //  > an integral type (such as uint or ivec3), or a double-precision type (such as double or dvec4).
+    //  > Double-precision attributes are only available in OpenGL 4.1 or ARB_vertex_attrib_64bit.
+    // primitive types that can be used as input for buffer object and vertex processor.
+    pub unsafe trait Primitive: Clone + Copy + Sized + Sync { }
 }
 
-impl GlObjectName for usize {
-    type Name = usize;
+mod vao {
+    use crate::vertex::buffer::types::Primitive;
+    
+    // wouldn't that be nice? Similar to Borrow / AsRef
+    pub trait Provider {
+        type Target<T>;
 
-    fn name(&self) -> Self::Name {
-        *self
+
+    }
+
+    // format requires: GL primitive type enum + known size
+
+    pub mod vertex {
+        // These types can be sources for vertex shader
+        // This can require type to be attribute
+        pub trait Source: AsRef<[u8]> {
+            fn format(&self) -> super::attribute::Format
+        }
+
+
+    }
+
+    pub mod attribute {
+        use std::marker::PhantomData;
+        use crate::vertex::buffer::types::Primitive;
+        use crate::vertex::buffer::vao::ComponentCount;
+
+        /// Universal format specifier for vertex attributes
+
+
+        // From trait does not fit here - some other custom trait FromType?
+        impl<P> From<&[P; 1]> for Format<P> where P: Primitive {
+            fn from(_: &[P; 1]) -> Self {
+                Self { components: ComponentCount::One, normalize: false, _primitive: PhantomData::<P>::default() }
+            }
+        }
+
+        impl<P> Format<P> where P: Primitive {
+
+        }
+    }
+
+    pub trait Attribute<P> where P: Primitive {
+
+    }
+
+    fn format<P>() where P: Primitive {
+
+    }
+
+    // state that is normally stored in VAO
+    struct VertexArrayConfig {
+
+    }
+
+    // make Attribute a GAT?
+    pub trait AttributeArray {
+        type Store<P>: AsRef<[P]>;
+
+        fn format() -> attribute::Fo
+    }
+
+    impl<A> Provider<VertexArrayConfig> for [A] where A: Attribute {
+
     }
 }
 
-todo!(pub unsafe configure_vertex_array_pointer(vertex_format, ));
 
-/// A handle to opengl object that manages it bindings and frees any GPU memory on Drop.
-/// todo: rename
-pub struct Handle {
-    name: usize // Rc<dyn GlObjectName>
-}
 
 pub struct GlslAttributeContext<'name> {
     location: usize,
@@ -42,7 +100,7 @@ pub struct GlslAttributeContext<'name> {
 }
 
 pub struct AttributeArray {
-    gl_object: Handle
+    gl_object: ()
 }
 
 // internal data structure that associates attribute with parameters
@@ -55,7 +113,7 @@ pub(crate) struct AttributeConfig<'a> {
 // this article is gold!!!
 // note: https://www.khronos.org/opengl/wiki/Vertex_Rendering#Multi-Draw
 
-pub struct VertexBufferBuilder {}
+pub struct VertexBufferBuilder { }
 
 pub struct VertexBuffer<'attrs> {
     // note: here comes type erasure for the attribute streams

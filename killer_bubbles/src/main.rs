@@ -8,6 +8,10 @@ mod drawing;
 mod binder;
 mod painter;
 mod colliders;
+mod fragment;
+mod context;
+mod object;
+mod primitives;
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -15,9 +19,7 @@ use glutin;
 use gl;
 use nalgebra_glm as glm;
 
-use std::io::Write;
 use std::default::Default;
-use std::time::{Duration, Instant};
 
 use drawing::DrawMode;
 use camera::Camera;
@@ -31,9 +33,6 @@ use glutin::dpi::PhysicalPosition;
 use nalgebra_glm::Mat4;
 use crate::binder::Binder;
 use crate::camera::{CameraPerspectiveState, CameraProvider, CameraViewState, FixedMovable, FreeRoamingCamera, KinematicCamera, PerspectiveMatrixProvider, ViewMatrixProvider};
-use crate::colliders::capsule::{Capsule, Collider};
-use crate::index_buffer::IndexBufferObject;
-use crate::uniform::TypedUniform;
 
 // todo: Objects can emit painters which borrow data from them during upload.
 //  data must be interpretable as &[VertexAttribute], &[IndexingPrimitive] and perhaps uniforms and programs.
@@ -234,7 +233,7 @@ impl Default for Transform {
 
 // components should have a possibility to require certain Uniforms?
 // or better Transform should require View and Perspective Matrix Providers?
-// -> if that was the case shaders could assume certain imputs and hide them from user and create an
+// -> if that was the case shaders could assume certain inputs and hide them from user and create an
 //   API that providers functions like get_clip_space_position, get_view_matrix, get_position and so on?
 // then i could add LightInteractive Component that would require normals?
 // Drawable ~ seems similar to MeshProvider. Mesh in turn could provide normals?
@@ -282,6 +281,11 @@ pub enum TextureTarget {
     Buffer = gl::TEXTURE_BUFFER as isize,
     _2DMultisample = gl::TEXTURE_2D_MULTISAMPLE as isize,
     _2DMultisampleArray = gl::TEXTURE_2D_MULTISAMPLE_ARRAY as isizey
+}
+
+pub struct VertexArray<'attrs> {
+    // type erased objects that can describe their content at the ffi level
+    attribute_arrays: Vec<&'attrs dyn vertex::attribute::AttributeArray>
 }
 
 // Texture object in opengl lingo

@@ -1,0 +1,21 @@
+Oświetlenie liczymy we fragment shaderze.
+Musimy przekazać mu parametry dla każdego piksela potrzebne do obliczenia koloru tzn,
+Tzn pozycje źródeł światła ich kierunki.
+Wówczas ostateczny kolor liczymy na podstawie obliczeń z modelem oświetlenia tzn interakcja 
+z każdym źródłem światła.
+
+Z vertex shadera wypuszczamy wektor normalny dla każdego wierzchołka i przekazujemy go do 
+fragment shadera zostaną one pomiędzy etapami zinterpolowane.
+
+Jakich parametrów potrzebujemy dla obliczeń światła?
+1. Kolor powierzchnii dla modelu phonga
+
+Jak liczyć oświetlenie ze świateł punktowych?
+
+Jak dodać odbicie tekstur ze ścian akwarium?
+-> wygenerować szachownicę do frame buffera
+-> do bitmapy
+
+Co do porządkowania bąbelków to aktualizuje się kolejność parameterów bąbelka (rozmiar, pozycja)
+w buforze do instancingu w zależności od odległości od gracza.
+

@@ -3,6 +3,7 @@ use crate::vertex::AttributeType;
 
 use crate::gl_assert_no_err;
 
+
 pub struct ArrayObject {
     id: GLuint
 }

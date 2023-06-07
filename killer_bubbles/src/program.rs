@@ -33,7 +33,7 @@ impl Drop for Shader {
     }
 }
 
-fn shader_from_source(source: &CStr, kind: gl::types::GLenum) -> Result<gl::types::GLuint, String> {
+fn shader_from_source(source: &CStr, kind: gl::types::GLenum) -> Result<GLuint, String> {
     let id = unsafe { gl::CreateShader(kind) };
     unsafe {
         gl::ShaderSource(id, 1, &source.as_ptr(), std::ptr::null());
@@ -93,7 +93,7 @@ impl Drop for ScopedBinder {
 }
 
 pub struct Program {
-    id: gl::types::GLuint,
+    id: GLuint,
 }
 
 impl Program {
