@@ -1,0 +1,1 @@
+Artifacts of my early experiences learning computer graphics. They are crude, rough around the edges, and generally far from perfect but they work. My aim with this repository is to improve unpon these solutions and complete all the missing ones just for the sake of it.
